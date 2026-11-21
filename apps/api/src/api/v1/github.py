@@ -10,14 +10,18 @@ from src.schemas.auth import (
     GitHubAuthUrlResponse,
     MessageResponse
 )
+from src.schemas.repository import GitHubRepoListResponse, GitHubRepoPickerItem
 from src.models.user import User
 from src.services.github_service import GitHubService, GitHubOAuthError
 from src.services.session_service import SessionService
 from src.services.auth_service import AuthService
+from src.services.crypto_service import crypto_service
+from src.services.repository_service import RepositoryService
 from src.api.deps import (
     get_github_service,
     get_session_service,
     get_auth_service,
+    get_repository_service,
     get_current_user,
     verify_csrf
 )
@@ -207,4 +211,96 @@ async def disconnect_github(
 
     return APIResponse(
         data=MessageResponse(message="GitHub integration successfully disconnected")
+    )
+
+
+@router.get("/repositories", response_model=APIResponse[GitHubRepoListResponse])
+async def list_user_github_repositories(
+    page: int = Query(1, ge=1),
+    per_page: int = Query(30, ge=1, le=100),
+    search: Optional[str] = Query(None),
+    sort: str = Query("updated"),
+    current_user: User = Depends(get_current_user),
+    auth_service: AuthService = Depends(get_auth_service),
+    github_service: GitHubService = Depends(get_github_service),
+    repo_service: RepositoryService = Depends(get_repository_service)
+) -> APIResponse[GitHubRepoListResponse]:
+    """
+    Fetches repositories accessible to the current authenticated GitHub user.
+    Cross-references with CodePilot database to indicate which repositories are already imported.
+    """
+    conn = await auth_service.get_github_connection(str(current_user.id))
+    if not conn or not conn.encrypted_access_token:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail={
+                "code": "GITHUB_NOT_CONNECTED",
+                "message": "GitHub account is not connected. Please connect your GitHub account first."
+            }
+        )
+
+    try:
+        access_token = crypto_service.decrypt_token(conn.encrypted_access_token)
+    except Exception as e:
+        logger.error("Failed to decrypt access token for user %s: %s", current_user.id, e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail={
+                "code": "INVALID_TOKEN",
+                "message": "GitHub access token could not be decrypted. Please re-authenticate."
+            }
+        )
+
+    try:
+        raw_repos = await github_service.list_user_repositories(
+            access_token=access_token,
+            page=page,
+            per_page=per_page,
+            search=search,
+            sort=sort
+        )
+    except GitHubOAuthError as e:
+        status_code = status.HTTP_400_BAD_REQUEST
+        if e.code == "GITHUB_UNAUTHORIZED":
+            status_code = status.HTTP_401_UNAUTHORIZED
+        elif e.code == "RATE_LIMIT_EXCEEDED":
+            status_code = status.HTTP_429_TOO_MANY_REQUESTS
+        raise HTTPException(
+            status_code=status_code,
+            detail={"code": e.code, "message": e.message}
+        )
+
+    # Get set of already imported provider_repo_ids
+    existing_repos = await repo_service.list_repositories(user_id=current_user.id)
+    imported_ids = {r.provider_repo_id for r in existing_repos}
+
+    items = []
+    for r in raw_repos:
+        items.append(
+            GitHubRepoPickerItem(
+                id=r["id"],
+                name=r["name"],
+                full_name=r["full_name"],
+                owner=r["owner"]["login"],
+                owner_avatar_url=r["owner"].get("avatar_url"),
+                html_url=r["html_url"],
+                description=r.get("description"),
+                private=r.get("private", False),
+                visibility="private" if r.get("private") else "public",
+                language=r.get("language"),
+                default_branch=r.get("default_branch") or "main",
+                stargazers_count=r.get("stargazers_count", 0),
+                forks_count=r.get("forks_count", 0),
+                updated_at=r.get("updated_at") or "",
+                is_imported=str(r["id"]) in imported_ids
+            )
+        )
+
+    return APIResponse(
+        data=GitHubRepoListResponse(
+            repositories=items,
+            page=page,
+            per_page=per_page,
+            has_more=len(raw_repos) == per_page
+        )
     )

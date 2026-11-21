@@ -10,6 +10,7 @@ from src.redis_client import get_redis
 from src.services.session_service import SessionService, SessionData
 from src.services.auth_service import AuthService
 from src.services.github_service import GitHubService
+from src.services.repository_service import RepositoryService
 from src.models.user import User
 
 
@@ -26,6 +27,14 @@ def get_auth_service(
     session_service: SessionService = Depends(get_session_service)
 ) -> AuthService:
     return AuthService(db, session_service)
+
+
+def get_repository_service(
+    db: AsyncSession = Depends(get_db),
+    github_service: GitHubService = Depends(get_github_service),
+    auth_service: AuthService = Depends(get_auth_service)
+) -> RepositoryService:
+    return RepositoryService(db, github_service, auth_service)
 
 
 async def get_current_session(

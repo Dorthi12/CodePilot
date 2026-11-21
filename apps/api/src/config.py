@@ -39,7 +39,7 @@ class Settings(BaseSettings):
         default="http://localhost:8000/api/v1/integrations/github/callback",
         description="GitHub OAuth redirect URI"
     )
-    GITHUB_SCOPES: str = "read:user,user:email"
+    GITHUB_SCOPES: str = "read:user,user:email,repo"
 
     # Security & Encryption
     SESSION_SECRET: str = Field(

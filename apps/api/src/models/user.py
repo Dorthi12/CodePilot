@@ -9,6 +9,7 @@ from src.database import Base
 
 if TYPE_CHECKING:
     from src.models.oauth_connection import OAuthConnection
+    from src.models.repository import Repository
 
 
 class User(Base):
@@ -59,6 +60,12 @@ class User(Base):
     oauth_connections: Mapped[List["OAuthConnection"]] = relationship(
         "OAuthConnection",
         back_populates="user",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    repositories: Mapped[List["Repository"]] = relationship(
+        "Repository",
+        back_populates="owner_user",
         cascade="all, delete-orphan",
         lazy="selectin"
     )
