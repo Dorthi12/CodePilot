@@ -19,7 +19,7 @@ class StaticAnalysisTool(BaseAgentTool):
     ]
 
     INJECTION_PATTERNS = [
-        (r"""execute\s*\(\s*f['"].*SELECT.*\{.*\}""", "SEC-SQLI-001", "Potential SQL injection via f-string interpolation"),
+        (r"""(?:f['"].*(?:SELECT|INSERT|UPDATE|DELETE).*(?:\{|%s)|execute(?:_query)?\s*\(.*f['"])""", "SEC-SQLI-001", "Potential SQL injection via formatted string query"),
         (r"""eval\s*\(|exec\s*\(""", "SEC-CODEI-001", "Use of unsafe eval() or exec()"),
     ]
 

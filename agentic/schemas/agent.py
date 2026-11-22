@@ -1,6 +1,6 @@
 """Schemas for Multi-Agent Code Analysis (M1)."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 from pydantic import BaseModel, Field
@@ -31,7 +31,7 @@ class ToolCall(BaseModel):
     approval_request_id: Optional[str] = None
     reason: Optional[str] = None
     duration_ms: float = 0.0
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentMessage(BaseModel):
@@ -40,7 +40,7 @@ class AgentMessage(BaseModel):
     task_id: str
     role: AgentRole
     content: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentTask(BaseModel):
@@ -66,7 +66,7 @@ class VerificationResult(BaseModel):
     check: VerificationCheck
     passed: bool
     detail: str
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AnalysisPlanStep(BaseModel):
@@ -130,7 +130,7 @@ class MultiAgentReport(BaseModel):
     verification_summary: Dict[str, Any] = Field(default_factory=dict)
     agent_summaries: Dict[str, str] = Field(default_factory=dict)
     execution_metrics: Dict[str, Any] = Field(default_factory=dict)
-    created_at: datetime = Field(default_factory=datetime.utcnow)
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 
 class AgentRunCreateRequest(BaseModel):

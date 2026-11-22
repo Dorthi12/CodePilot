@@ -1,6 +1,6 @@
 """Review Agent for consolidating specialist outputs and compiling final synthesis."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import List, Optional
 from shared.types.agent import AgentRole, TaskStatus
 from shared.types.findings import Finding
@@ -20,7 +20,7 @@ class ReviewAgent(BaseAgent):
         token_budget: int = 50000,
     ) -> AgentTask:
         task.status = TaskStatus.RUNNING
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(timezone.utc)
 
         task.messages.append(
             AgentMessage(
@@ -41,5 +41,5 @@ class ReviewAgent(BaseAgent):
             "disagreement_count": len(disagreements),
         }
         task.status = TaskStatus.COMPLETED
-        task.ended_at = datetime.utcnow()
+        task.ended_at = datetime.now(timezone.utc)
         return task

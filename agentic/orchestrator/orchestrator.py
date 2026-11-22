@@ -1,7 +1,7 @@
 """Multi-Agent Orchestrator managing analysis plans, agent execution, and governance."""
 
 import asyncio
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Set
 from uuid import uuid4
 
@@ -65,7 +65,7 @@ class MultiAgentOrchestrator:
 
     def create_analysis_run(self, req: AgentRunCreateRequest) -> AgentRunResponse:
         run_id = str(uuid4())
-        created_at = datetime.utcnow()
+        created_at = datetime.now(timezone.utc)
 
         # 1. Build Analysis Plan
         steps: List[AnalysisPlanStep] = []
@@ -144,9 +144,9 @@ class MultiAgentOrchestrator:
 
         run["approved_scopes"].add(req.scope)
         run["plan"].approved_by = "user_approval"
-        run["plan"].approved_at = datetime.utcnow()
+        run["plan"].approved_at = datetime.now(timezone.utc)
         run["status"] = RunStatus.RUNNING
-        run["started_at"] = datetime.utcnow()
+        run["started_at"] = datetime.now(timezone.utc)
 
         self._emit_event(run_id, {"type": "run_approved", "scope": req.scope})
         self._emit_event(run_id, {"type": "run_state_changed", "status": RunStatus.RUNNING.value})
@@ -157,7 +157,7 @@ class MultiAgentOrchestrator:
     def cancel_run(self, run_id: str) -> AgentRunResponse:
         run = self._get_run_raw(run_id)
         run["status"] = RunStatus.CANCELLED
-        run["completed_at"] = datetime.utcnow()
+        run["completed_at"] = datetime.now(timezone.utc)
         self._emit_event(run_id, {"type": "run_cancelled"})
         self._emit_event(run_id, {"type": "run_state_changed", "status": RunStatus.CANCELLED.value})
         return self.get_run_response(run_id)
@@ -287,7 +287,7 @@ class MultiAgentOrchestrator:
             self._reports[run_id] = report
 
             run["status"] = RunStatus.COMPLETED
-            run["completed_at"] = datetime.utcnow()
+            run["completed_at"] = datetime.now(timezone.utc)
             run["findings"] = all_findings
 
             self._emit_event(
@@ -304,7 +304,7 @@ class MultiAgentOrchestrator:
         except Exception as e:
             run["status"] = RunStatus.FAILED
             run["error_message"] = str(e)
-            run["completed_at"] = datetime.utcnow()
+            run["completed_at"] = datetime.now(timezone.utc)
             self._emit_event(run_id, {"type": "run_failed", "error": str(e)})
 
     def get_run_response(self, run_id: str) -> AgentRunResponse:
@@ -337,7 +337,7 @@ class MultiAgentOrchestrator:
 
     def _emit_event(self, run_id: str, event_data: Dict[str, Any]) -> None:
         if run_id in self._event_subscribers:
-            event_data["timestamp"] = datetime.utcnow().isoformat()
+            event_data["timestamp"] = datetime.now(timezone.utc).isoformat()
             for q in self._event_subscribers[run_id]:
                 try:
                     q.put_nowait(event_data)
