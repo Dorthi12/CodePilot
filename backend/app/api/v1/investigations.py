@@ -1,0 +1,1 @@
+"""Bug investigation endpoints."""
