@@ -1,6 +1,6 @@
 """Code Quality Agent for analyzing maintainability, complexity, and smells."""
 
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional
 from shared.types.agent import AgentRole, FindingSeverity, TaskStatus
 from shared.types.findings import FindingEvidence
@@ -19,7 +19,7 @@ class CodeQualityAgent(BaseAgent):
         token_budget: int = 50000,
     ) -> AgentTask:
         task.status = TaskStatus.RUNNING
-        task.started_at = datetime.utcnow()
+        task.started_at = datetime.now(timezone.utc)
 
         task.messages.append(
             AgentMessage(
@@ -92,5 +92,5 @@ class CodeQualityAgent(BaseAgent):
             task.status = TaskStatus.FAILED
             task.error_message = str(e)
 
-        task.ended_at = datetime.utcnow()
+        task.ended_at = datetime.now(timezone.utc)
         return task

@@ -81,5 +81,10 @@ class SnapshotContextRegistry:
         return cls._instances[snapshot_id]
 
     @classmethod
+    def contains(cls, snapshot_id: str) -> bool:
+        """Return whether a snapshot context was explicitly loaded and registered."""
+        return snapshot_id in cls._instances
+
+    @classmethod
     def clear(cls) -> None:
         cls._instances.clear()
