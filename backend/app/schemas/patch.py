@@ -18,6 +18,7 @@ class FixCreateRequest(BaseModel):
     target_files: List[str] = Field(default_factory=list, max_length=20)
     constraints: List[str] = Field(default_factory=list, max_length=30)
     validation_policy: ValidationPolicy = Field(default_factory=ValidationPolicy)
+    unified_diff: Optional[str] = Field(default=None, max_length=2_000_000)
 
     @model_validator(mode="after")
     def exactly_one_source(self):
