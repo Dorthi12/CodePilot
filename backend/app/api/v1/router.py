@@ -7,6 +7,7 @@ from backend.app.api.v1.analysis import router as analysis_router
 from backend.app.api.v1.fixes import router as fixes_router
 from backend.app.api.v1.improvements import router as improvements_router
 from backend.app.api.v1.investigations import router as investigations_router
+from backend.app.api.v1.security import router as security_router
 from backend.app.api.v1.tests import router as tests_router
 
 api_router = APIRouter()
@@ -18,3 +19,4 @@ api_router.include_router(investigations_router)
 api_router.include_router(improvements_router)
 api_router.include_router(fixes_router)
 api_router.include_router(tests_router)
+api_router.include_router(security_router)
