@@ -1,4 +1,4 @@
-"""M4 patch API contracts."""
+"""M4 patch API contracts and validation schemas."""
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
@@ -41,9 +41,16 @@ class FixValidateRequest(BaseModel):
 
 
 class FixApproveRequest(BaseModel):
-    scope: Literal["EXPORT"] = "EXPORT"
+    scope: Literal["EXPORT", "PUBLISH"] = "EXPORT"
     diff_sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
 
 
 class FixRejectRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
+
+
+class FixPullRequestCreate(BaseModel):
+    publish_approval_id: str
+    branch_name: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=200)
+    body: Optional[str] = Field(default="", max_length=10000)
