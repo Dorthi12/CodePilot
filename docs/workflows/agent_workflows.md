@@ -154,3 +154,68 @@ flowchart TD
 
 6. **M4 Patch Core Integration (`backend/app/modules/testing/test_manager.py`)**:
    - `POST /tests/{run_id}/export` compiles the generated test suite into a unified diff bound to `diff_sha256`, registering it directly into `PatchManager` for code review, approval, and application.
+
+---
+
+## Mastermind Feature 7 (M7): Pull Request Reviews Workflow
+
+The Pull Request Reviews workflow provides end-to-end automated analysis, blast radius calculation, and actionable inline review comment generation for incoming GitHub pull requests. It ingests GitHub webhooks, verifies HMAC-SHA256 signatures with dual-secret rotation, deduplicates deliveries, parses unified diffs, maps changed lines to AST symbols, conducts graph-based blast radius impact analysis, executes multi-scanner checks (bugs, code smells, zero-raw-secret detection), enforces strict line anchor verification (AI-16: comments without valid anchors on changed lines are discarded), supports human review triage (edit/discard), and enforces the Dangerous Operation Register publish gate with immutable audit logging.
+
+```mermaid
+flowchart TD
+    A["GitHub Webhook (POST /github/webhooks)"] --> B{"HMAC-SHA256 Valid? (Dual-Secret)"}
+    B -- No --> C["401 Unauthorized (WEBHOOK_SIGNATURE_INVALID)"]
+    B -- Yes --> D{"Delivery ID Exists in Deliveries?"}
+    D -- Duplicate --> E["200 OK (REPLAY Idempotent Ack)"]
+    D -- New Delivery --> F["202 Accepted (Fast <500ms ack)"]
+    F --> G["Parse PR & Event Routing (opened / synchronize / closed)"]
+    G --> H["Client Review Request (POST /pull-requests/{id}/review-runs)"]
+    H --> I{"Head SHA Matches PR? (Force-Push Guard)"}
+    I -- No --> J["409 Conflict (PR_HEAD_CHANGED) & Invalidate Stale Runs"]
+    I -- Yes --> K["Diff Hunk Parser & Added-Line Extraction"]
+    K --> L["AST Symbol Mapping & Call Graph Impact Analysis"]
+    L --> M["Multi-Scanner Execution: Bug, Smell, Secret Detection"]
+    M --> N{"Line Anchor Guard (AI-16): Line in Changed Lines?"}
+    N -- No --> O["Discard Finding (Prevent unanchored comment)"]
+    N -- Yes --> P["Generate Grounded Review Comment (DRAFT + Cryptographic Evidence)"]
+    P --> Q["Synthesize Executive Summary & Persist Review Run"]
+    Q --> R["Draft Review Inspection (GET /pull-requests/{id}/reviews/{run_id})"]
+    R --> S["Human Review Triage (PATCH .../comments/{comment_id}: EDITED / DISCARDED)"]
+    S --> T["Publish Request (POST .../publish)"]
+    T --> U{"Dangerous Operation Gate: Consent / Approval?"}
+    U -- No --> V["403 Forbidden (PUBLISH_APPROVAL_REQUIRED)"]
+    U -- Yes --> W["Skip DISCARDED Comments, Publish Active to GitHub"]
+    W --> X["Record Immutable Audit Event (SEC-AUD-02) & Return 202"]
+```
+
+### Core Architecture Components
+
+1. **GitHub Webhook Handler (`backend/app/modules/github/webhook_handler.py`)**:
+   - Constant-time HMAC-SHA256 verification supporting primary and previous secrets for seamless 180-day rotation without downtime (`SEC-API-28`, `SEC-API-30`).
+   - Conforms strictly to GitHub documentation test vector: secret `It's a Secret to Everybody`, body `Hello, World!` -> `sha256=757107ea0eb2509fc211221cce984b8a37570b6d7586c22c46f4379c8b043e17`.
+   - Replay deduplication via `X-GitHub-Delivery` in `webhook_deliveries` returning `200 OK`.
+   - Enforces a 26 MB body payload limit (`MAX_WEBHOOK_BODY_BYTES`).
+   - Fork PR isolation: marks external forks read-only with zero access to internal repository secrets.
+
+2. **PR Diff Analyzer (`backend/app/modules/pull_requests/diff_analyzer.py`)**:
+   - Parses unified diff hunks, tracks additions and deletions, and computes exact 1-based modified line numbers in the head commit.
+   - Maps modified lines directly to AST function and class symbols in the repository snapshot.
+
+3. **Blast Radius & Impact Analyzer (`agentic/workflows/pull_request_review.py`)**:
+   - Traverses the code graph in the head snapshot context (`CALLS`, `IMPORTS`, `DEPENDS_ON`, `TESTS`).
+   - Identifies all dependent modules impacted by the changes and selects test suites that exercise modified code.
+
+4. **Multi-Scanner Review Engine & AI-16 Line Anchor Verification**:
+   - Coordinates AST bug detection (`BugDetector`), code quality smell detection (`CodeSmellDetector`), and secret scanning (`SecretScanner`).
+   - Zero Raw Secrets Invariant (`I9` / `SEC-SECRET-01`): secrets are never logged or stored in plaintext; only SHA256 fingerprints are cited.
+   - Line Anchor Verification (`AI-16` / `V6 Claim Support Check`): only findings that anchor directly to changed or added lines in the diff are retained as inline review comments; comments on unchanged code are discarded, guaranteeing 100% anchor validity.
+
+5. **Comment Triage & Lifecycle (`backend/app/modules/pull_requests/review_manager.py`)**:
+   - Generates comments in `DRAFT` status with cryptographic `FindingEvidence` and suggested code remediations.
+   - Allows human reviewers to revise comment text (`EDITED`) or discard comments (`DISCARDED`) via `PATCH /pull-requests/{id}/reviews/{run_id}/comments/{comment_id}`.
+
+6. **Dangerous Operation Register & Publisher (`backend/app/modules/pull_requests/publisher.py`)**:
+   - Enforces the dangerous operation publication gate: publishing comments to GitHub requires explicit approval (`publish_approval_id`) or `OWNER` authorization.
+   - Discarded comments are skipped; active comments are transitioned to `PUBLISHED` and assigned `github_comment_id`.
+   - Writes immutable records to `pr_audit_events` with actor type, resource, action, and outcome metadata per `SEC-AUD-02` and `SEC-AUD-10`.
+
