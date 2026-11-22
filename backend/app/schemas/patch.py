@@ -1,4 +1,4 @@
-"""M4 patch API contracts."""
+"""M4 patch API contracts and validation schemas."""
 from typing import List, Literal, Optional
 from pydantic import BaseModel, Field, model_validator
 
@@ -18,6 +18,7 @@ class FixCreateRequest(BaseModel):
     target_files: List[str] = Field(default_factory=list, max_length=20)
     constraints: List[str] = Field(default_factory=list, max_length=30)
     validation_policy: ValidationPolicy = Field(default_factory=ValidationPolicy)
+    unified_diff: Optional[str] = Field(default=None, max_length=2_000_000)
 
     @model_validator(mode="after")
     def exactly_one_source(self):
@@ -40,9 +41,16 @@ class FixValidateRequest(BaseModel):
 
 
 class FixApproveRequest(BaseModel):
-    scope: Literal["EXPORT"] = "EXPORT"
+    scope: Literal["EXPORT", "PUBLISH"] = "EXPORT"
     diff_sha256: str = Field(pattern=r"^[a-fA-F0-9]{64}$")
 
 
 class FixRejectRequest(BaseModel):
     reason: str = Field(min_length=1, max_length=2000)
+
+
+class FixPullRequestCreate(BaseModel):
+    publish_approval_id: str
+    branch_name: str = Field(min_length=1, max_length=100)
+    title: str = Field(min_length=1, max_length=200)
+    body: Optional[str] = Field(default="", max_length=10000)
