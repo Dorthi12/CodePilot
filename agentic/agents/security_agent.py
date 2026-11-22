@@ -6,6 +6,7 @@ from shared.types.agent import AgentRole, FindingSeverity, TaskStatus
 from shared.types.findings import FindingEvidence
 from agentic.agents.base_agent import BaseAgent
 from agentic.schemas.agent import AgentMessage, AgentTask
+from ai_service.security_analysis.secret_detector import redact_secrets
 
 
 class SecurityAgent(BaseAgent):
@@ -53,12 +54,14 @@ class SecurityAgent(BaseAgent):
                         approved_scopes=approved_scopes,
                         token_budget=token_budget,
                     )
+                    raw_snippet = file_res.get("snippet", item.get("snippet", ""))
+                    sanitized_snippet = redact_secrets(raw_snippet)
                     evidence_list.append(
                         FindingEvidence(
                             file_path=item["file_path"],
                             line_start=item["line_start"],
                             line_end=item["line_end"],
-                            snippet=file_res.get("snippet", item.get("snippet", "")),
+                            snippet=sanitized_snippet,
                             snippet_hash=file_res.get("content_hash"),
                         )
                     )
