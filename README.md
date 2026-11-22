@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # CodePilot – The Knowledge of Athena
 
 **Architecture:** Modular Monolith + Independently Scalable Workers  
@@ -7,3 +8,7 @@
 **Agentic Layer:** Multi-Agent Orchestration  
 **Database:** PostgreSQL + Neo4j + FAISS + Redis  
 **Version:** Initial Repository Blueprint v1.0
+=======
+# codepilot
+innodev'26
+>>>>>>> origin/main
