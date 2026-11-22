@@ -47,3 +47,9 @@ Thumbs.db
 .pytest_cache/
 .coverage
 htmlcov/
+
+# Local testing workspaces & git HEAD artifacts
+HEAD/
+apps/api/HEAD/
+apps/api/workspaces/
+workspaces/

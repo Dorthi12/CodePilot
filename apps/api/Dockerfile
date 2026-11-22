@@ -7,6 +7,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
     libpq-dev \
     curl \
+    && rm -rf /var/lib/apt/lists/* \
+    && echo "deb https://deb.debian.org/debian bookworm main" > /etc/apt/sources.list.d/git.list \
+    && apt-get update && apt-get install -y --no-install-recommends git \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt requirements-dev.txt ./

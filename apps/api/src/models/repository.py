@@ -11,6 +11,8 @@ if TYPE_CHECKING:
     from src.models.user import User
     from src.models.repository_permission import RepositoryPermission
     from src.models.repository_import import RepositoryImport
+    from src.models.job import Job
+    from src.models.snapshot import Snapshot
 
 
 class Repository(Base):
@@ -130,6 +132,18 @@ class Repository(Base):
     )
     imports: Mapped[List["RepositoryImport"]] = relationship(
         "RepositoryImport",
+        back_populates="repository",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    jobs: Mapped[List["Job"]] = relationship(
+        "Job",
+        back_populates="repository",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    snapshots: Mapped[List["Snapshot"]] = relationship(
+        "Snapshot",
         back_populates="repository",
         cascade="all, delete-orphan",
         lazy="selectin"

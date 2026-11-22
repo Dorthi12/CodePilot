@@ -52,6 +52,9 @@ services:
       - FRONTEND_BASE_URL=http://localhost:5173
       - SESSION_SECRET=${SESSION_SECRET:-dev-session-secret-key-must-be-at-least-32-chars-long}
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-dev-token-encryption-key-must-be-32-chars!}
+      - WORKSPACE_BASE_DIR=/workspaces
+    volumes:
+      - workspace_data:/workspaces
     depends_on:
       postgres:
         condition: service_healthy
@@ -74,3 +77,4 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  workspace_data:

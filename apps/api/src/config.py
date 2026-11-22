@@ -60,6 +60,15 @@ class Settings(BaseSettings):
     COOKIE_SAMESITE: str = "lax"
     COOKIE_DOMAIN: Optional[str] = None
 
+    # Workspace & Repository Cloning
+    WORKSPACE_BASE_DIR: str = Field(
+        default=os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "workspaces")),
+        description="Base directory for cloned repository workspaces"
+    )
+    MAX_REPO_SIZE_KB: int = Field(default=500 * 1024, description="Maximum allowed repository size in KB (500 MB)")
+    MAX_WORKSPACE_DISK_USAGE_MB: int = Field(default=1000, description="Maximum disk quota per cloned workspace in MB (1 GB)")
+    CLONE_TIMEOUT_SECONDS: int = Field(default=300, description="Maximum timeout for clone operations in seconds (5 minutes)")
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { Repository } from '../types/repository';
 import { 
   GitBranch, 
@@ -19,14 +20,26 @@ interface RepositoryCardProps {
 }
 
 export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAnalyze }) => {
+  const navigate = useNavigate();
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
-  const handleAnalyzeClick = async () => {
-    setIsAnalyzing(true);
-    try {
-      await onAnalyze(repository.id);
-    } finally {
-      setIsAnalyzing(false);
+  const handleCardClick = (e: React.MouseEvent) => {
+    // Prevent triggering if clicked on external link or action button
+    if ((e.target as HTMLElement).closest('a, button')) return;
+    navigate(`/repositories/${repository.id}`);
+  };
+
+  const handleActionClick = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (repository.analysis_status === 'READY') {
+      navigate(`/repositories/${repository.id}`);
+    } else {
+      setIsAnalyzing(true);
+      try {
+        await onAnalyze(repository.id);
+      } finally {
+        setIsAnalyzing(false);
+      }
     }
   };
 
@@ -34,7 +47,10 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAn
   const isReady = repository.analysis_status === 'READY';
 
   return (
-    <div className="bg-surface-darker/90 border border-surface-border/70 hover:border-brand-500/50 rounded-2xl p-5 shadow-lg transition-all duration-200 flex flex-col justify-between group">
+    <div 
+      onClick={handleCardClick}
+      className="bg-surface-darker/90 border border-surface-border/70 hover:border-brand-500/50 rounded-2xl p-5 shadow-lg hover:shadow-xl transition-all duration-200 flex flex-col justify-between group cursor-pointer"
+    >
       <div>
         {/* Header: Name, Visibility Badge, GitHub Link */}
         <div className="flex items-start justify-between gap-3 mb-2.5">
@@ -68,6 +84,7 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAn
               href={repository.canonical_url}
               target="_blank"
               rel="noopener noreferrer"
+              onClick={e => e.stopPropagation()}
               className="p-1.5 rounded-lg text-slate-400 hover:text-slate-200 hover:bg-surface-dark transition-colors"
               title="Open on GitHub"
             >
@@ -113,33 +130,43 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAn
           {isReady ? (
             <span className="inline-flex items-center space-x-1 text-[11px] font-medium text-emerald-400">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Analysis Prepared</span>
+              <span>Workspace Ready</span>
+            </span>
+          ) : repository.analysis_status === 'ANALYZING' ? (
+            <span className="inline-flex items-center space-x-1 text-[11px] font-medium text-brand-400">
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Ingesting...</span>
             </span>
           ) : (
             <span className="text-[11px] font-medium text-slate-400">
-              Ready for Athena
+              Ready to Ingest
             </span>
           )}
         </div>
 
         <button
-          onClick={handleAnalyzeClick}
+          onClick={handleActionClick}
           disabled={isAnalyzing}
           className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
             isReady
-              ? 'bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30'
+              ? 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
               : 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
           } disabled:opacity-50`}
         >
           {isAnalyzing ? (
             <>
               <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Queuing...</span>
+              <span>Opening...</span>
+            </>
+          ) : isReady ? (
+            <>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Explore Codebase</span>
             </>
           ) : (
             <>
               <Sparkles className="w-3.5 h-3.5" />
-              <span>{isReady ? 'Re-Analyze' : 'Analyze Repository'}</span>
+              <span>Clone & Ingest</span>
             </>
           )}
         </button>

@@ -6,6 +6,7 @@ import { repositoryService } from '../services/repositoryService';
 import { RepositoryCard } from '../components/RepositoryCard';
 import { GitHubRepoPickerCard } from '../components/GitHubRepoPickerCard';
 import { ImportByUrlCard } from '../components/ImportByUrlCard';
+import { IngestionProgressModal } from '../components/IngestionProgressModal';
 import { GitHubStatus } from '../types/auth';
 import { Repository, GitHubRepoPickerItem } from '../types/repository';
 import { 
@@ -43,6 +44,7 @@ export const DashboardPage: React.FC = () => {
 
   // GitHub account picker state
   const [gitHubRepos, setGitHubRepos] = useState<GitHubRepoPickerItem[]>([]);
+  const [selectedRepoForIngestion, setSelectedRepoForIngestion] = useState<Repository | null>(null);
   const [gitHubReposLoading, setGitHubReposLoading] = useState<boolean>(false);
   const [gitHubSearch, setGitHubSearch] = useState<string>('');
   const [gitHubPage, setGitHubPage] = useState<number>(1);
@@ -131,17 +133,9 @@ export const DashboardPage: React.FC = () => {
   };
 
   const handleAnalyze = async (repoId: string) => {
-    try {
-      const updated = await repositoryService.triggerAnalysis(repoId);
-      showToast('success', `Analysis initialized for '${updated.owner}/${updated.name}'.`);
-      await fetchImportedRepositories();
-    } catch (err: unknown) {
-      let msg = 'Failed to trigger analysis.';
-      if (err && typeof err === 'object' && 'response' in err) {
-        const axErr = err as { response?: { data?: { error?: { message?: string } } } };
-        msg = axErr.response?.data?.error?.message || msg;
-      }
-      showToast('error', msg);
+    const repo = importedRepos.find(r => r.id === repoId);
+    if (repo) {
+      setSelectedRepoForIngestion(repo);
     }
   };
 
@@ -547,6 +541,18 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* Real-time Ingestion Progress Modal */}
+        {selectedRepoForIngestion && (
+          <IngestionProgressModal
+            repository={selectedRepoForIngestion}
+            isOpen={Boolean(selectedRepoForIngestion)}
+            onClose={() => setSelectedRepoForIngestion(null)}
+            onComplete={() => {
+              fetchImportedRepositories();
+            }}
+          />
+        )}
 
       </main>
     </div>
