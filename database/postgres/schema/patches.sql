@@ -1,0 +1,1 @@
+-- Patches table schema

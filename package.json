@@ -1,0 +1,11 @@
+{
+  "name": "codepilot-root",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "frontend"
+  ],
+  "scripts": {
+    "dev": "npm --prefix frontend run dev"
+  }
+}

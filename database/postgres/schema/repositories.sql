@@ -1,0 +1,1 @@
+-- Repositories table schema
