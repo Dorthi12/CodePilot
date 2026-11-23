@@ -62,6 +62,14 @@ class MultiAgentOrchestrator:
         self._runs: Dict[str, Dict[str, Any]] = {}
         self._reports: Dict[str, MultiAgentReport] = {}
         self._event_subscribers: Dict[str, List[asyncio.Queue]] = {}
+        self._event_history: Dict[str, List[Dict[str, Any]]] = {}
+
+    def clear(self) -> None:
+        """Clear all stored runs, reports, and events."""
+        self._runs.clear()
+        self._reports.clear()
+        self._event_subscribers.clear()
+        self._event_history.clear()
 
     def create_analysis_run(self, req: AgentRunCreateRequest) -> AgentRunResponse:
         run_id = str(uuid4())
@@ -336,8 +344,13 @@ class MultiAgentOrchestrator:
         return self._runs[run_id]
 
     def _emit_event(self, run_id: str, event_data: Dict[str, Any]) -> None:
-        if run_id in self._event_subscribers:
+        if "timestamp" not in event_data:
             event_data["timestamp"] = datetime.now(timezone.utc).isoformat()
+        if run_id not in self._event_history:
+            self._event_history[run_id] = []
+        self._event_history[run_id].append(event_data)
+
+        if run_id in self._event_subscribers:
             for q in self._event_subscribers[run_id]:
                 try:
                     q.put_nowait(event_data)
@@ -345,7 +358,18 @@ class MultiAgentOrchestrator:
                     pass
 
     async def subscribe_events(self, run_id: str) -> AsyncGenerator[Dict[str, Any], None]:
-        self._get_run_raw(run_id)  # validate existence
+        run = self._get_run_raw(run_id)  # validate existence
+
+        # Replay any existing events from history
+        for ev in list(self._event_history.get(run_id, [])):
+            yield ev
+            if ev.get("type") in ("run_completed", "run_failed", "run_cancelled"):
+                return
+
+        # If run is already in terminal state, we are done
+        if run.get("status") in (RunStatus.COMPLETED, RunStatus.CANCELLED, RunStatus.FAILED):
+            return
+
         q: asyncio.Queue = asyncio.Queue()
         if run_id not in self._event_subscribers:
             self._event_subscribers[run_id] = []
