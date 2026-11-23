@@ -1,0 +1,1 @@
+-- Snapshots table schema

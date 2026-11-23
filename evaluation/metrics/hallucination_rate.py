@@ -1,0 +1,1 @@
+"""Hallucination rate metric."""
