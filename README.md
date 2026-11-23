@@ -4,6 +4,14 @@
 
 ---
 
+> [!IMPORTANT]
+> ### 👥 Team Collaboration & Developer Onboarding
+> If you are collaborating on this project or setting up your local developer environment, please consult:
+> **👉 [TEAM_SETUP.md](TEAM_SETUP.md) — Team Setup & Safe Collaboration Guide**
+> Contains step-by-step instructions for Docker, environment configuration, migrations without data loss, safe Git branching, and troubleshooting.
+
+---
+
 ## Current Status: Phase 1 — Authentication System Complete
 
 This repository contains the production-grade, secure authentication system for **CodePilot**, strictly adhering to the **CodePilot Master Architecture Specification (v2.1)** and **API, Integration & Data Specification (v1.0)**.

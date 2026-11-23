@@ -139,6 +139,24 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleDeleteRepository = async (repoId: string) => {
+    const repoToDelete = importedRepos.find(r => r.id === repoId);
+    const repoName = repoToDelete ? `${repoToDelete.owner}/${repoToDelete.name}` : 'Repository';
+    try {
+      await repositoryService.deleteRepository(repoId);
+      setImportedRepos(prev => prev.filter(r => r.id !== repoId));
+      showToast('success', `'${repoName}' was deleted from CodePilot.`);
+    } catch (err: unknown) {
+      let msg = 'Failed to delete repository.';
+      if (err && typeof err === 'object' && 'response' in err) {
+        const axErr = err as { response?: { data?: { error?: { message?: string } } } };
+        msg = axErr.response?.data?.error?.message || msg;
+      }
+      showToast('error', msg);
+      throw err;
+    }
+  };
+
   if (!user) return null;
 
   const formattedDate = user.created_at
@@ -330,6 +348,7 @@ export const DashboardPage: React.FC = () => {
                       key={repo.id}
                       repository={repo}
                       onAnalyze={handleAnalyze}
+                      onDelete={handleDeleteRepository}
                     />
                   ))}
                 </div>

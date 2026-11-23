@@ -4,6 +4,7 @@ from typing import Optional, List
 from fastapi import APIRouter, Depends, Query, HTTPException, status, BackgroundTasks
 
 from src.schemas.common import APIResponse
+from src.schemas.auth import MessageResponse
 from src.schemas.repository import (
     RepositoryImportRequest,
     RepositoryResponse,
@@ -160,6 +161,35 @@ async def get_repository(
     return APIResponse(
         data=RepositoryResponse.model_validate(repo)
     )
+
+
+@router.delete("/{id}", response_model=APIResponse[MessageResponse])
+async def delete_repository(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    repo_service: RepositoryService = Depends(get_repository_service),
+    clone_service: CloneService = Depends(get_clone_service),
+    _: None = Depends(verify_csrf)
+) -> APIResponse[MessageResponse]:
+    """
+    Deletes an imported repository from CodePilot.
+    Deletes local workspace files, snapshots, AST symbols, chunks, summaries, and jobs.
+    Does NOT delete or modify the remote repository on GitHub.
+    """
+    try:
+        await repo_service.delete_repository(
+            repo_id=id,
+            user_id=current_user.id,
+            clone_service=clone_service
+        )
+        return APIResponse(
+            data=MessageResponse(message="Repository and associated analysis data successfully deleted.")
+        )
+    except RepositoryError as e:
+        status_code = status.HTTP_404_NOT_FOUND if e.code == "NOT_FOUND" else (
+            status.HTTP_403_FORBIDDEN if e.code == "FORBIDDEN" else status.HTTP_400_BAD_REQUEST
+        )
+        raise HTTPException(status_code=status_code, detail={"code": e.code, "message": e.message})
 
 
 @router.post("/{id}/clone", response_model=APIResponse[JobResponse], status_code=status.HTTP_202_ACCEPTED)

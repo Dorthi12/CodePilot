@@ -1,5 +1,6 @@
 import pytest
 import uuid
+from pathlib import Path
 from unittest.mock import patch, AsyncMock, MagicMock
 from httpx import AsyncClient, Response
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -648,3 +649,138 @@ async def test_get_repository_validates_response_metadata(test_redis):
             await service.get_repository("some", "repo")
 
     assert exc_info.value.code == "INVALID_METADATA"
+
+
+@pytest.mark.asyncio
+async def test_delete_repository_success(client: AsyncClient, test_db: AsyncSession, authenticated_session, tmp_path: Path):
+    """DELETE /api/v1/repositories/{id} deletes DB entities and workspace storage."""
+    session_id = authenticated_session["session_id"]
+    csrf_token = authenticated_session["csrf_token"]
+    user_id = authenticated_session["user"].id
+
+    client.cookies.set(settings.SESSION_COOKIE_NAME, session_id)
+    client.cookies.set(settings.CSRF_COOKIE_NAME, csrf_token)
+    headers = {"X-CSRF-Token": csrf_token, "Origin": settings.FRONTEND_BASE_URL}
+
+    mock_repo = {
+        "id": 998877,
+        "name": "delete-me",
+        "owner": {"login": authenticated_session["user"].username},
+        "html_url": "https://github.com/athena_dev/delete-me",
+        "private": False,
+        "default_branch": "main"
+    }
+
+    with patch("src.services.github_service.GitHubService.get_repository", return_value=mock_repo):
+        import_resp = await client.post("/api/v1/repositories/import", json={"url": "athena_dev/delete-me"}, headers=headers)
+    assert import_resp.status_code == 201
+    repo_id = uuid.UUID(import_resp.json()["data"]["id"])
+
+    # Create mock workspace directory on disk
+    mock_workspace = tmp_path / "workspaces" / str(user_id) / str(repo_id)
+    mock_workspace.mkdir(parents=True, exist_ok=True)
+    (mock_workspace / "code.py").write_text("print('hello')", encoding="utf-8")
+    assert mock_workspace.exists()
+
+    with patch("src.services.repository_service.get_repository_workspace_path", return_value=mock_workspace):
+        del_resp = await client.delete(f"/api/v1/repositories/{repo_id}", headers=headers)
+
+    assert del_resp.status_code == 200
+    assert "deleted" in del_resp.json()["data"]["message"].lower()
+
+    # Workspace directory must be deleted
+    assert not mock_workspace.exists()
+
+    # Repository must be gone from DB
+    get_resp = await client.get(f"/api/v1/repositories/{repo_id}")
+    assert get_resp.status_code == 404
+
+
+@pytest.mark.asyncio
+async def test_delete_repository_ownership_protection(client: AsyncClient, test_db: AsyncSession, authenticated_session):
+    """Another user cannot delete a repository they do not own."""
+    session_id = authenticated_session["session_id"]
+    csrf_token = authenticated_session["csrf_token"]
+
+    client.cookies.set(settings.SESSION_COOKIE_NAME, session_id)
+    client.cookies.set(settings.CSRF_COOKIE_NAME, csrf_token)
+    headers = {"X-CSRF-Token": csrf_token, "Origin": settings.FRONTEND_BASE_URL}
+
+    # Create repository owned by a different user
+    other_user = User(
+        id=uuid.uuid4(),
+        github_id="88888888",
+        username="other_dev"
+    )
+    test_db.add(other_user)
+    await test_db.flush()
+
+    other_repo = Repository(
+        id=uuid.uuid4(),
+        owner_user_id=other_user.id,
+        provider="github",
+        provider_repo_id="112233",
+        owner="other_dev",
+        name="private-vault",
+        canonical_url="https://github.com/other_dev/private-vault",
+        status="ACTIVE"
+    )
+    test_db.add(other_repo)
+    await test_db.commit()
+
+    # Current user tries to delete other_user's repo
+    del_resp = await client.delete(f"/api/v1/repositories/{other_repo.id}", headers=headers)
+    assert del_resp.status_code in (403, 404)
+
+    # Repository must still exist
+    stmt = select(Repository).where(Repository.id == other_repo.id)
+    remaining = (await test_db.execute(stmt)).scalar_one_or_none()
+    assert remaining is not None
+
+
+@pytest.mark.asyncio
+async def test_delete_repository_handles_active_jobs(client: AsyncClient, test_db: AsyncSession, authenticated_session):
+    """Deleting a repository cancels any active/running jobs and cleans Redis locks."""
+    session_id = authenticated_session["session_id"]
+    csrf_token = authenticated_session["csrf_token"]
+    user_id = authenticated_session["user"].id
+
+    client.cookies.set(settings.SESSION_COOKIE_NAME, session_id)
+    client.cookies.set(settings.CSRF_COOKIE_NAME, csrf_token)
+    headers = {"X-CSRF-Token": csrf_token, "Origin": settings.FRONTEND_BASE_URL}
+
+    mock_repo = {
+        "id": 443322,
+        "name": "job-target",
+        "owner": {"login": authenticated_session["user"].username},
+        "html_url": "https://github.com/athena_dev/job-target",
+        "private": False,
+        "default_branch": "main"
+    }
+
+    with patch("src.services.github_service.GitHubService.get_repository", return_value=mock_repo):
+        import_resp = await client.post("/api/v1/repositories/import", json={"url": "athena_dev/job-target"}, headers=headers)
+    repo_id = uuid.UUID(import_resp.json()["data"]["id"])
+
+    # Create an active running Job for this repo
+    from src.models.job import Job
+    active_job = Job(
+        id=uuid.uuid4(),
+        repository_id=repo_id,
+        user_id=user_id,
+        job_type="CLONE",
+        status="RUNNING",
+        stage="CLONING",
+        retrieval_method="GIT_CLONE",
+        branch="main"
+    )
+    test_db.add(active_job)
+    await test_db.commit()
+
+    del_resp = await client.delete(f"/api/v1/repositories/{repo_id}", headers=headers)
+    assert del_resp.status_code == 200
+
+    # Job must be cascade-deleted with repo
+    stmt = select(Job).where(Job.id == active_job.id)
+    rem_job = (await test_db.execute(stmt)).scalar_one_or_none()
+    assert rem_job is None

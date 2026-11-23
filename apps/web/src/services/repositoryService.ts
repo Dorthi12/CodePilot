@@ -172,5 +172,10 @@ export const repositoryService = {
       { file_path: filePath, force: options?.force ?? false }
     );
     return response.data.data;
+  },
+
+  async deleteRepository(id: string): Promise<{ message: string }> {
+    const response = await api.delete<APIResponse<{ message: string }>>(`/repositories/${id}`);
+    return response.data.data;
   }
 };
