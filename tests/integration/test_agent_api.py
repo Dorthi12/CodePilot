@@ -89,3 +89,22 @@ def test_api_not_found():
     client = TestClient(app)
     res = client.get("/api/v1/agents/analysis-runs/non-existent-id")
     assert res.status_code == 404
+
+
+def test_api_sse_events():
+    client = TestClient(app)
+
+    payload = {
+        "snapshot_id": "snap-api-test",
+        "agents": ["SECURITY"],
+        "require_plan_approval": False,
+    }
+    res = client.post("/api/v1/agents/analysis-runs", json=payload)
+    assert res.status_code == 201
+    run_id = res.json()["run_id"]
+
+    # Stream events via SSE
+    events_res = client.get(f"/api/v1/agents/analysis-runs/{run_id}/events")
+    assert events_res.status_code == 200
+    assert "text/event-stream" in events_res.headers.get("content-type", "")
+    assert "data: " in events_res.text
