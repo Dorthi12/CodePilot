@@ -40,6 +40,7 @@ class Settings(BaseSettings):
         description="GitHub OAuth redirect URI"
     )
     GITHUB_SCOPES: str = "read:user,user:email,repo"
+    AI_SERVICES_URL: str = "http://127.0.0.1:8001"
 
     # Security & Encryption
     SESSION_SECRET: str = Field(

@@ -368,6 +368,19 @@ async def test_trigger_analysis_endpoint(client: AsyncClient, authenticated_sess
 
     repo_id = import_resp.json()["data"]["id"]
 
-    analyze_resp = await client.post(f"/api/v1/repositories/{repo_id}/analyze", headers=headers)
+    with (
+        patch(
+            "src.services.github_service.GitHubService.get_repository_files",
+            return_value={"src/main.py": "def main():\n    return True\n"},
+        ),
+        patch(
+            "src.services.ai_service.AIService.index_repository",
+            return_value={"symbol_count": 1},
+        ),
+    ):
+        analyze_resp = await client.post(
+            f"/api/v1/repositories/{repo_id}/analyze",
+            headers=headers,
+        )
     assert analyze_resp.status_code == 200
     assert analyze_resp.json()["data"]["analysis_status"] == "READY"

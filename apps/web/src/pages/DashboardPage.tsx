@@ -8,6 +8,10 @@ import { GitHubRepoPickerCard } from '../components/GitHubRepoPickerCard';
 import { ImportByUrlCard } from '../components/ImportByUrlCard';
 import { GitHubStatus } from '../types/auth';
 import { Repository, GitHubRepoPickerItem } from '../types/repository';
+import { CodeSearchModal } from '../components/CodeSearchModal';
+import { CodeExplanationModal } from '../components/CodeExplanationModal';
+import { AnalysisProgressModal, AnalysisStage } from '../components/AnalysisProgressModal';
+import { CodeExplorerModal } from '../components/CodeExplorerModal';
 import { 
   Github, 
   Search, 
@@ -22,7 +26,10 @@ import {
   Key,
   Calendar,
   Mail,
-  ExternalLink
+  ExternalLink,
+  FileCode2,
+  Cpu,
+  Database
 } from 'lucide-react';
 
 type TabType = 'imported' | 'my-repos' | 'import-url';
@@ -34,6 +41,60 @@ export const DashboardPage: React.FC = () => {
 
   // Active tab state
   const [activeTab, setActiveTab] = useState<TabType>('imported');
+
+  // AI Feature Modals state
+  const [searchRepo, setSearchRepo] = useState<Repository | null>(null);
+  const [explainRepo, setExplainRepo] = useState<Repository | null>(null);
+  const [explorerRepo, setExplorerRepo] = useState<Repository | null>(null);
+  const [explorerSelectedFile, setExplorerSelectedFile] = useState<string | undefined>(undefined);
+  const [explainSnippetPreload, setExplainSnippetPreload] = useState<{
+    code: string;
+    filePath?: string;
+    startLine?: number;
+    endLine?: number;
+  } | null>(null);
+
+  // Analysis Progress Modal state
+  const [analyzingRepo, setAnalyzingRepo] = useState<Repository | null>(null);
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [isAnalysisComplete, setIsAnalysisComplete] = useState<boolean>(false);
+  const [analysisStages, setAnalysisStages] = useState<AnalysisStage[]>([
+    {
+      id: 'fetch_meta',
+      label: 'Fetching Repository Information',
+      description: 'Verifying permissions and pulling repository metadata from GitHub.',
+      status: 'pending',
+      icon: FolderGit2,
+    },
+    {
+      id: 'fetch_files',
+      label: 'Retrieving Source Files',
+      description: 'Walking recursive Git trees to retrieve supported source code files.',
+      status: 'pending',
+      icon: FileCode2,
+    },
+    {
+      id: 'parse_code',
+      label: 'Parsing Source Code & AST Trees',
+      description: 'Extracting functions, classes, methods, and declarations via AST analysis.',
+      status: 'pending',
+      icon: Cpu,
+    },
+    {
+      id: 'build_index',
+      label: 'Building Symbol Search Index',
+      description: 'Generating ranked n-gram and word-boundary index with disk persistence.',
+      status: 'pending',
+      icon: Database,
+    },
+    {
+      id: 'gen_summary',
+      label: 'Generating Project Summary & Architecture',
+      description: 'Synthesizing module hierarchy, frameworks, and architecture overview.',
+      status: 'pending',
+      icon: Sparkles,
+    },
+  ]);
 
   // Imported repositories state
   const [importedRepos, setImportedRepos] = useState<Repository[]>([]);
@@ -131,17 +192,153 @@ export const DashboardPage: React.FC = () => {
   };
 
   const handleAnalyze = async (repoId: string) => {
+    const targetRepo = importedRepos.find((r) => r.id === repoId);
+    if (!targetRepo) return;
+
+    // Reset & open progress modal
+    setAnalyzingRepo(targetRepo);
+    setAnalysisError(null);
+    setIsAnalysisComplete(false);
+
+    const initialStages: AnalysisStage[] = [
+      {
+        id: 'fetch_meta',
+        label: 'Fetching Repository Information',
+        description: 'Verifying permissions and pulling repository metadata from GitHub.',
+        status: 'in_progress',
+        icon: FolderGit2,
+      },
+      {
+        id: 'fetch_files',
+        label: 'Retrieving Source Files',
+        description: 'Walking recursive Git trees to retrieve supported source code files.',
+        status: 'pending',
+        icon: FileCode2,
+      },
+      {
+        id: 'parse_code',
+        label: 'Parsing Source Code & AST Trees',
+        description: 'Extracting functions, classes, methods, and declarations via AST analysis.',
+        status: 'pending',
+        icon: Cpu,
+      },
+      {
+        id: 'build_index',
+        label: 'Building Symbol Search Index',
+        description: 'Generating ranked n-gram and word-boundary index with disk persistence.',
+        status: 'pending',
+        icon: Database,
+      },
+      {
+        id: 'gen_summary',
+        label: 'Generating Project Summary & Architecture',
+        description: 'Synthesizing module hierarchy, frameworks, and architecture overview.',
+        status: 'pending',
+        icon: Sparkles,
+      },
+    ];
+    setAnalysisStages(initialStages);
+
     try {
+      // Simulate real-time progress steps for UI feedback during backend execution
+      setTimeout(() => {
+        setAnalysisStages((prev) =>
+          prev.map((s, idx) =>
+            idx === 0
+              ? { ...s, status: 'completed' }
+              : idx === 1
+              ? { ...s, status: 'in_progress' }
+              : s
+          )
+        );
+      }, 700);
+
+      setTimeout(() => {
+        setAnalysisStages((prev) =>
+          prev.map((s, idx) =>
+            idx <= 1
+              ? { ...s, status: 'completed' }
+              : idx === 2
+              ? { ...s, status: 'in_progress' }
+              : s
+          )
+        );
+      }, 1600);
+
+      // Trigger the real backend analysis pipeline
       const updated = await repositoryService.triggerAnalysis(repoId);
-      showToast('success', `Analysis initialized for '${updated.owner}/${updated.name}'.`);
+
+      // Advance through remaining stages upon successful completion
+      setAnalysisStages((prev) =>
+        prev.map((s, idx) =>
+          idx <= 2
+            ? { ...s, status: 'completed' }
+            : idx === 3
+            ? { ...s, status: 'in_progress' }
+            : s
+        )
+      );
+
+      setTimeout(() => {
+        setAnalysisStages((prev) =>
+          prev.map((s, idx) =>
+            idx <= 3
+              ? { ...s, status: 'completed' }
+              : idx === 4
+              ? { ...s, status: 'in_progress' }
+              : s
+          )
+        );
+      }, 400);
+
+      setTimeout(() => {
+        setAnalysisStages((prev) =>
+          prev.map((s) => ({ ...s, status: 'completed' }))
+        );
+        setIsAnalysisComplete(true);
+        setAnalyzingRepo(updated);
+        showToast('success', `Repository '${updated.owner}/${updated.name}' analyzed successfully.`);
+      }, 800);
+
       await fetchImportedRepositories();
     } catch (err: unknown) {
-      let msg = 'Failed to trigger analysis.';
+      let msg = 'Failed to analyze repository.';
       if (err && typeof err === 'object' && 'response' in err) {
         const axErr = err as { response?: { data?: { error?: { message?: string } } } };
         msg = axErr.response?.data?.error?.message || msg;
       }
+      setAnalysisError(msg);
+      setAnalysisStages((prev) =>
+        prev.map((s) => (s.status === 'in_progress' ? { ...s, status: 'failed' } : s))
+      );
       showToast('error', msg);
+    }
+  };
+
+  const handleOpenExplainFromSearch = (snippet: {
+    code: string;
+    filePath?: string;
+    startLine?: number;
+    endLine?: number;
+  }) => {
+    if (searchRepo) {
+      setExplainRepo(searchRepo);
+      setExplainSnippetPreload(snippet);
+      setSearchRepo(null);
+    }
+  };
+
+  const handleOpenExplainFromExplorer = (
+    code: string,
+    filePath: string,
+    startLine?: number,
+    endLine?: number
+  ) => {
+    if (explorerRepo) {
+      setExplainRepo(explorerRepo);
+      setExplainSnippetPreload({ code, filePath, startLine, endLine });
+      // Keep explorer open or closed based on user flow; close explorer so explanation modal is focal
+      setExplorerRepo(null);
     }
   };
 
@@ -336,6 +533,15 @@ export const DashboardPage: React.FC = () => {
                       key={repo.id}
                       repository={repo}
                       onAnalyze={handleAnalyze}
+                      onOpenSearch={(r) => setSearchRepo(r)}
+                      onOpenExplain={(r) => {
+                        setExplainRepo(r);
+                        setExplainSnippetPreload(null);
+                      }}
+                      onOpenExplorer={(r) => {
+                        setExplorerRepo(r);
+                        setExplorerSelectedFile(undefined);
+                      }}
                     />
                   ))}
                 </div>
@@ -547,6 +753,56 @@ export const DashboardPage: React.FC = () => {
             </div>
           </div>
         </div>
+
+        {/* AI Modals */}
+        {analyzingRepo && (
+          <AnalysisProgressModal
+            repository={analyzingRepo}
+            isOpen={!!analyzingRepo}
+            stages={analysisStages}
+            error={analysisError}
+            isComplete={isAnalysisComplete}
+            onClose={() => setAnalyzingRepo(null)}
+            onViewResults={() => {
+              setExplorerRepo(analyzingRepo);
+              setAnalyzingRepo(null);
+            }}
+          />
+        )}
+
+        {explorerRepo && (
+          <CodeExplorerModal
+            repository={explorerRepo}
+            isOpen={!!explorerRepo}
+            onClose={() => setExplorerRepo(null)}
+            onExplainSelection={handleOpenExplainFromExplorer}
+            initialSelectedFile={explorerSelectedFile}
+          />
+        )}
+
+        {searchRepo && (
+          <CodeSearchModal
+            repository={searchRepo}
+            onClose={() => setSearchRepo(null)}
+            onSelectForExplanation={(snippet, filePath, startLine, endLine) => {
+              handleOpenExplainFromSearch({ code: snippet, filePath, startLine, endLine });
+            }}
+          />
+        )}
+
+        {explainRepo && (
+          <CodeExplanationModal
+            repository={explainRepo}
+            initialCode={explainSnippetPreload?.code || ''}
+            initialFilePath={explainSnippetPreload?.filePath || ''}
+            initialStartLine={explainSnippetPreload?.startLine}
+            initialEndLine={explainSnippetPreload?.endLine}
+            onClose={() => {
+              setExplainRepo(null);
+              setExplainSnippetPreload(null);
+            }}
+          />
+        )}
 
       </main>
     </div>

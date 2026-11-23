@@ -30,6 +30,10 @@ from AIservices.features.code_explanation import (
     ExplanationStyle,
     explain_code,
 )
+from AIservices.features.code_explanation.project_summary import (
+    ProjectSummary,
+    generate_project_summary,
+)
 from AIservices.features.code_search import search
 
 logger = logging.getLogger(__name__)
@@ -264,6 +268,123 @@ def get_index_details(repo_id: str, snapshot_id: str):
         "snapshot_id": idx.snapshot_id,
         "symbol_count": len(idx.symbols),
         "warnings": idx.warnings,
+    }
+
+
+@router.get(
+    "/summary/{repo_id}/{snapshot_id}",
+    response_model=ProjectSummary,
+    tags=["analysis"],
+    responses={
+        404: {"model": ErrorResponse, "description": "Index not found"},
+    },
+)
+def get_project_summary(repo_id: str, snapshot_id: str):
+    """
+    Generate authoritative project summary and architectural breakdown for an indexed repo.
+    """
+    idx = get_index(repo_id, snapshot_id)
+    if idx is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(
+                error=f"Index not found for repo '{repo_id}' at snapshot '{snapshot_id}'.",
+                code="INDEX_NOT_FOUND",
+                details={"repo_id": repo_id, "snapshot_id": snapshot_id},
+            ).model_dump(),
+        )
+    return generate_project_summary(idx)
+
+
+@router.get("/files/{repo_id}/{snapshot_id}", tags=["files"])
+def get_repository_files_list(repo_id: str, snapshot_id: str):
+    """
+    Get file tree structure and available paths for an indexed repository.
+    """
+    idx = get_index(repo_id, snapshot_id)
+    if idx is None:
+        return JSONResponse(
+            status_code=status.HTTP_404_NOT_FOUND,
+            content=ErrorResponse(
+                error=f"Index not found for repo '{repo_id}' at snapshot '{snapshot_id}'.",
+                code="INDEX_NOT_FOUND",
+                details={"repo_id": repo_id, "snapshot_id": snapshot_id},
+            ).model_dump(),
+        )
+    
+    files_meta = []
+    for path, content in (idx.files or {}).items():
+        files_meta.append({
+            "path": path,
+            "size": len(content),
+            "line_count": len(content.splitlines()),
+        })
+
+    # Hierarchical tree builder
+    tree = []
+    for item in sorted(files_meta, key=lambda x: x["path"]):
+        parts = item["path"].strip("/").split("/")
+        curr = tree
+        for i, part in enumerate(parts):
+            is_file = (i == len(parts) - 1)
+            rel_path = "/".join(parts[:i + 1])
+            existing = next((c for c in curr if c["name"] == part), None)
+            if not existing:
+                node = {
+                    "name": part,
+                    "path": rel_path,
+                    "type": "file" if is_file else "directory",
+                    "size": item["size"] if is_file else None,
+                    "line_count": item["line_count"] if is_file else None,
+                    "children": [] if not is_file else None,
+                }
+                curr.append(node)
+                if not is_file:
+                    curr = node["children"]
+            else:
+                if not is_file:
+                    curr = existing["children"]
+
+    return {
+        "repo_id": repo_id,
+        "snapshot_id": snapshot_id,
+        "file_count": len(files_meta),
+        "files": files_meta,
+        "tree": tree,
+    }
+
+
+@router.get("/file-content/{repo_id}/{snapshot_id}", tags=["files"])
+def get_file_content(repo_id: str, snapshot_id: str, path: str):
+    """
+    Retrieve source text and symbols for a specific file in an indexed repository.
+    """
+    idx = get_index(repo_id, snapshot_id)
+    if idx is None:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Index not found for repo '{repo_id}' at snapshot '{snapshot_id}'.",
+        )
+    
+    if not idx.files or path not in idx.files:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"File '{path}' not found in indexed snapshot.",
+        )
+
+    content = idx.files[path]
+    file_symbols = [
+        s.model_dump() for s in (idx.symbols or [])
+        if s.file_path == path
+    ]
+
+    return {
+        "repo_id": repo_id,
+        "snapshot_id": snapshot_id,
+        "path": path,
+        "content": content,
+        "line_count": len(content.splitlines()),
+        "symbols": file_symbols,
     }
 
 

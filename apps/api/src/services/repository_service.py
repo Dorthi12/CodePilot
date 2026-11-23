@@ -10,6 +10,7 @@ from src.models.repository_import import RepositoryImport
 from src.services.github_service import GitHubService, parse_github_url, GitHubOAuthError
 from src.services.auth_service import AuthService
 from src.services.crypto_service import crypto_service
+from src.services.ai_service import AIService, AIServiceError
 
 logger = logging.getLogger(__name__)
 
@@ -35,11 +36,13 @@ class RepositoryService:
         self,
         db: AsyncSession,
         github_service: GitHubService,
-        auth_service: AuthService
+        auth_service: AuthService,
+        ai_service: Optional[AIService] = None,
     ):
         self.db = db
         self.github_service = github_service
         self.auth_service = auth_service
+        self.ai_service = ai_service
 
     async def import_repository(
         self,
@@ -226,14 +229,52 @@ class RepositoryService:
 
     async def trigger_analysis(self, repo_id: uuid.UUID, user_id: uuid.UUID) -> Repository:
         """
-        Prepares repository for analysis (Module 3 placeholder).
-        Updates analysis_status to READY.
+        Fetches repository source files and builds the AI code index.
         """
         repo = await self.get_repository(repo_id, user_id)
         if not repo:
             raise RepositoryError("Repository not found or access denied.", code="NOT_FOUND")
 
-        repo.analysis_status = "READY"
+        if not self.ai_service:
+            raise RepositoryError("AI services are not configured.", code="AI_SERVICE_UNAVAILABLE")
+
+        access_token: Optional[str] = None
+        conn = await self.auth_service.get_github_connection(user_id)
+        if conn and conn.encrypted_access_token:
+            try:
+                access_token = crypto_service.decrypt_token(conn.encrypted_access_token)
+            except Exception as exc:
+                logger.warning("Could not decrypt GitHub token for user %s: %s", user_id, exc)
+
+        repo.analysis_status = "ANALYZING"
         await self.db.commit()
-        await self.db.refresh(repo)
+
+        error_message = "Unknown analysis error"
+        try:
+            files = await self.github_service.get_repository_files(
+                owner=repo.owner,
+                name=repo.name,
+                branch=repo.tracked_branch,
+                access_token=access_token,
+            )
+            snapshot_id = repo.tracked_branch
+            await self.ai_service.index_repository(
+                repo_id=str(repo.id),
+                snapshot_id=snapshot_id,
+                files=files,
+            )
+            repo.analysis_status = "READY"
+        except Exception as exc:
+            repo.analysis_status = "FAILED"
+            error_message = getattr(exc, "message", str(exc))
+            logger.exception("Repository analysis failed for %s: %s", repo.id, exc)
+        finally:
+            await self.db.commit()
+            await self.db.refresh(repo)
+
+        if repo.analysis_status == "FAILED":
+            raise RepositoryError(
+                f"Repository analysis failed: {error_message}",
+                code="ANALYSIS_FAILED",
+            )
         return repo

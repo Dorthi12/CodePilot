@@ -11,6 +11,7 @@ from src.services.session_service import SessionService, SessionData
 from src.services.auth_service import AuthService
 from src.services.github_service import GitHubService
 from src.services.repository_service import RepositoryService
+from src.services.ai_service import AIService
 from src.models.user import User
 
 
@@ -34,7 +35,7 @@ def get_repository_service(
     github_service: GitHubService = Depends(get_github_service),
     auth_service: AuthService = Depends(get_auth_service)
 ) -> RepositoryService:
-    return RepositoryService(db, github_service, auth_service)
+    return RepositoryService(db, github_service, auth_service, AIService())
 
 
 async def get_current_session(

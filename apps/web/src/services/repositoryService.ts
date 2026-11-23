@@ -55,5 +55,28 @@ export const repositoryService = {
   async triggerAnalysis(id: string): Promise<Repository> {
     const response = await api.post<APIResponse<Repository>>(`/repositories/${id}/analyze`);
     return response.data.data;
+  },
+
+  async searchRepository(
+    id: string,
+    query: string,
+    topK = 20
+  ): Promise<Record<string, unknown>> {
+    const response = await api.post<Record<string, unknown>>(
+      `/repositories/${id}/ai/search`,
+      { query, top_k: topK }
+    );
+    return response.data;
+  },
+
+  async explainRepositoryCode(
+    id: string,
+    payload: Record<string, unknown>
+  ): Promise<Record<string, unknown>> {
+    const response = await api.post<Record<string, unknown>>(
+      `/repositories/${id}/ai/explain`,
+      payload
+    );
+    return response.data;
   }
 };

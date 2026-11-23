@@ -20,10 +20,28 @@ from src.api.deps import (
     get_repository_service,
     verify_csrf
 )
+from src.services.ai_service import AIService, AIServiceError
+from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/repositories", tags=["Repositories"])
+
+
+class RepositorySearchRequest(BaseModel):
+    query: str = Field(..., min_length=1, max_length=500)
+    filters: Optional[dict] = None
+    top_k: int = Field(default=20, ge=1, le=100)
+
+
+class RepositoryExplainRequest(BaseModel):
+    code: Optional[str] = None
+    file_path: Optional[str] = None
+    start_line: Optional[int] = None
+    end_line: Optional[int] = None
+    symbol_id: Optional[str] = None
+    question: Optional[str] = None
+    explanation_style: str = "technical"
 
 
 @router.get("", response_model=APIResponse[List[RepositoryResponse]])
@@ -166,3 +184,127 @@ async def trigger_analysis(
             status_code=status.HTTP_404_NOT_FOUND if e.code == "NOT_FOUND" else status.HTTP_400_BAD_REQUEST,
             detail={"code": e.code, "message": e.message}
         )
+
+
+@router.post("/{id}/ai/search")
+async def search_repository(
+    id: uuid.UUID,
+    payload: RepositorySearchRequest,
+    current_user: User = Depends(get_current_user),
+    repo_service: RepositoryService = Depends(get_repository_service),
+    _: None = Depends(verify_csrf),
+) -> dict:
+    repo = await repo_service.get_repository(repo_id=id, user_id=current_user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail={"code": "REPOSITORY_NOT_FOUND", "message": "Repository not found or access denied."})
+    if repo.analysis_status != "READY":
+        raise HTTPException(status_code=409, detail={"code": "ANALYSIS_NOT_READY", "message": "Analyze the repository before searching."})
+
+    try:
+        return await AIService().search(
+            repo_id=str(repo.id),
+            snapshot_id=repo.tracked_branch,
+            query=payload.query,
+            filters=payload.filters,
+            top_k=payload.top_k,
+        )
+    except AIServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": "AI_SERVICE_ERROR", "message": exc.message})
+
+
+@router.post("/{id}/ai/explain")
+async def explain_repository_code(
+    id: uuid.UUID,
+    payload: RepositoryExplainRequest,
+    current_user: User = Depends(get_current_user),
+    repo_service: RepositoryService = Depends(get_repository_service),
+    _: None = Depends(verify_csrf),
+) -> dict:
+    repo = await repo_service.get_repository(repo_id=id, user_id=current_user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail={"code": "REPOSITORY_NOT_FOUND", "message": "Repository not found or access denied."})
+    if repo.analysis_status != "READY":
+        raise HTTPException(status_code=409, detail={"code": "ANALYSIS_NOT_READY", "message": "Analyze the repository before explaining code."})
+
+    try:
+        return await AIService().explain(
+            repo_id=str(repo.id),
+            snapshot_id=repo.tracked_branch,
+            payload=payload.model_dump(exclude_none=True),
+        )
+    except AIServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": "AI_SERVICE_ERROR", "message": exc.message})
+
+
+@router.get("/{id}/analysis/summary")
+async def get_repository_summary(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    repo_service: RepositoryService = Depends(get_repository_service),
+) -> dict:
+    """
+    Get generated project summary and codebase breakdown for an analyzed repository.
+    """
+    repo = await repo_service.get_repository(repo_id=id, user_id=current_user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail={"code": "REPOSITORY_NOT_FOUND", "message": "Repository not found or access denied."})
+    if repo.analysis_status != "READY":
+        raise HTTPException(status_code=409, detail={"code": "ANALYSIS_NOT_READY", "message": "Repository has not been analyzed yet."})
+
+    try:
+        return await AIService().get_summary(
+            repo_id=str(repo.id),
+            snapshot_id=repo.tracked_branch,
+        )
+    except AIServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": "AI_SERVICE_ERROR", "message": exc.message})
+
+
+@router.get("/{id}/files")
+async def get_repository_files_tree(
+    id: uuid.UUID,
+    current_user: User = Depends(get_current_user),
+    repo_service: RepositoryService = Depends(get_repository_service),
+) -> dict:
+    """
+    Get indexed file structure and hierarchy for Code Explorer.
+    """
+    repo = await repo_service.get_repository(repo_id=id, user_id=current_user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail={"code": "REPOSITORY_NOT_FOUND", "message": "Repository not found or access denied."})
+    if repo.analysis_status != "READY":
+        raise HTTPException(status_code=409, detail={"code": "ANALYSIS_NOT_READY", "message": "Repository has not been analyzed yet."})
+
+    try:
+        return await AIService().get_files(
+            repo_id=str(repo.id),
+            snapshot_id=repo.tracked_branch,
+        )
+    except AIServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": "AI_SERVICE_ERROR", "message": exc.message})
+
+
+@router.get("/{id}/file-content")
+async def get_repository_file_content(
+    id: uuid.UUID,
+    path: str = Query(..., description="POSIX relative path to source file"),
+    current_user: User = Depends(get_current_user),
+    repo_service: RepositoryService = Depends(get_repository_service),
+) -> dict:
+    """
+    Retrieve source code and associated symbols for a specific file.
+    """
+    repo = await repo_service.get_repository(repo_id=id, user_id=current_user.id)
+    if not repo:
+        raise HTTPException(status_code=404, detail={"code": "REPOSITORY_NOT_FOUND", "message": "Repository not found or access denied."})
+    if repo.analysis_status != "READY":
+        raise HTTPException(status_code=409, detail={"code": "ANALYSIS_NOT_READY", "message": "Repository has not been analyzed yet."})
+
+    try:
+        return await AIService().get_file_content(
+            repo_id=str(repo.id),
+            snapshot_id=repo.tracked_branch,
+            path=path,
+        )
+    except AIServiceError as exc:
+        raise HTTPException(status_code=exc.status_code, detail={"code": "AI_SERVICE_ERROR", "message": exc.message})

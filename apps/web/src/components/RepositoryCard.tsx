@@ -10,15 +10,27 @@ import {
   Sparkles, 
   CheckCircle2, 
   Loader2,
-  FolderGit2
+  FolderGit2,
+  Search,
+  BookOpen,
+  Layers
 } from 'lucide-react';
 
 interface RepositoryCardProps {
   repository: Repository;
   onAnalyze: (repoId: string) => Promise<void>;
+  onOpenSearch?: (repository: Repository) => void;
+  onOpenExplain?: (repository: Repository) => void;
+  onOpenExplorer?: (repository: Repository) => void;
 }
 
-export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAnalyze }) => {
+export const RepositoryCard: React.FC<RepositoryCardProps> = ({
+  repository,
+  onAnalyze,
+  onOpenSearch,
+  onOpenExplain,
+  onOpenExplorer,
+}) => {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
   const handleAnalyzeClick = async () => {
@@ -108,12 +120,12 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAn
       </div>
 
       {/* Footer: Analysis Status and Action Button */}
-      <div className="flex items-center justify-between border-t border-surface-border/50 pt-3">
+      <div className="flex items-center justify-between border-t border-surface-border/50 pt-3 gap-2 flex-wrap">
         <div>
           {isReady ? (
             <span className="inline-flex items-center space-x-1 text-[11px] font-medium text-emerald-400">
               <CheckCircle2 className="w-3.5 h-3.5" />
-              <span>Analysis Prepared</span>
+              <span>Analyzed & Ready</span>
             </span>
           ) : (
             <span className="text-[11px] font-medium text-slate-400">
@@ -122,27 +134,62 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAn
           )}
         </div>
 
-        <button
-          onClick={handleAnalyzeClick}
-          disabled={isAnalyzing}
-          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
-            isReady
-              ? 'bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30'
-              : 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
-          } disabled:opacity-50`}
-        >
-          {isAnalyzing ? (
-            <>
-              <Loader2 className="w-3.5 h-3.5 animate-spin" />
-              <span>Queuing...</span>
-            </>
-          ) : (
-            <>
-              <Sparkles className="w-3.5 h-3.5" />
-              <span>{isReady ? 'Re-Analyze' : 'Analyze Repository'}</span>
-            </>
+        <div className="flex items-center space-x-1.5">
+          {isReady && onOpenExplorer && (
+            <button
+              onClick={() => onOpenExplorer(repository)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30 transition-all cursor-pointer"
+              title="Explore Codebase & Project Summary"
+            >
+              <Layers className="w-3.5 h-3.5 text-brand-400" />
+              <span>Explore Code</span>
+            </button>
           )}
-        </button>
+
+          {isReady && onOpenSearch && (
+            <button
+              onClick={() => onOpenSearch(repository)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 bg-surface-dark hover:bg-surface-border/60 text-slate-200 border border-surface-border transition-all cursor-pointer"
+              title="Search code symbols"
+            >
+              <Search className="w-3.5 h-3.5 text-brand-400" />
+              <span>Search</span>
+            </button>
+          )}
+
+          {isReady && onOpenExplain && (
+            <button
+              onClick={() => onOpenExplain(repository)}
+              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 bg-surface-dark hover:bg-surface-border/60 text-slate-200 border border-surface-border transition-all cursor-pointer"
+              title="Explain code with AI"
+            >
+              <BookOpen className="w-3.5 h-3.5 text-brand-400" />
+              <span>Explain</span>
+            </button>
+          )}
+
+          <button
+            onClick={handleAnalyzeClick}
+            disabled={isAnalyzing}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
+              isReady
+                ? 'bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30'
+                : 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
+            } disabled:opacity-50`}
+          >
+            {isAnalyzing ? (
+              <>
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <span>Queuing...</span>
+              </>
+            ) : (
+              <>
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{isReady ? 'Re-Analyze' : 'Analyze Repository'}</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     </div>
   );

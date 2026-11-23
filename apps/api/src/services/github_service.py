@@ -111,6 +111,77 @@ class GitHubService:
     def _state_key(self, state: str) -> str:
         return f"oauth:state:{state}"
 
+    async def get_repository_files(
+        self,
+        owner: str,
+        name: str,
+        branch: str,
+        access_token: Optional[str] = None,
+        max_files: int = 500,
+        max_file_bytes: int = 500_000,
+    ) -> Dict[str, str]:
+        """Fetch supported source text files from a GitHub branch for AI indexing."""
+        headers = {
+            "Accept": "application/vnd.github+json",
+            "User-Agent": GITHUB_HTTP_USER_AGENT,
+        }
+        if access_token:
+            headers["Authorization"] = f"Bearer {access_token}"
+
+        supported_extensions = (
+            ".py", ".js", ".jsx", ".ts", ".tsx", ".java", ".go",
+        )
+
+        async with httpx.AsyncClient(timeout=30.0) as client:
+            tree_url = f"https://api.github.com/repos/{owner}/{name}/git/trees/{branch}"
+            tree_response = await client.get(
+                tree_url,
+                headers=headers,
+                params={"recursive": "1"},
+            )
+            tree_response.raise_for_status()
+            tree = tree_response.json()
+
+            files: Dict[str, str] = {}
+            entries = tree.get("tree", [])
+            if tree.get("truncated"):
+                logger.warning("GitHub repository tree is truncated for %s/%s", owner, name)
+
+            for entry in entries:
+                if len(files) >= max_files:
+                    break
+                if entry.get("type") != "blob":
+                    continue
+                path = entry.get("path", "")
+                if not path or not path.lower().endswith(supported_extensions):
+                    continue
+
+                blob_url = f"https://api.github.com/repos/{owner}/{name}/contents/{path}"
+                blob_response = await client.get(
+                    blob_url,
+                    headers=headers,
+                    params={"ref": branch},
+                )
+                if blob_response.status_code != 200:
+                    continue
+                blob = blob_response.json()
+                size = int(blob.get("size", 0) or 0)
+                if size > max_file_bytes:
+                    continue
+                if blob.get("encoding") != "base64" or not blob.get("content"):
+                    continue
+
+                import base64
+                try:
+                    raw = base64.b64decode(blob["content"].replace("\n", ""), validate=False)
+                    if b"\x00" in raw:
+                        continue
+                    files[path] = raw.decode("utf-8")
+                except (ValueError, UnicodeDecodeError):
+                    continue
+
+        return files
+
     async def create_authorization_url(self) -> Tuple[str, str]:
         """
         Generates a state, stores it in Redis with 10 min TTL, and returns
