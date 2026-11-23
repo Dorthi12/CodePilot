@@ -3,6 +3,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { LoginPage } from './pages/LoginPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { RepositoryDetailPage } from './pages/RepositoryDetailPage';
 import { ProtectedRoute } from './components/ProtectedRoute';
 
 const RootRedirect: React.FC = () => {
@@ -23,6 +24,14 @@ export const App: React.FC = () => {
             element={
               <ProtectedRoute>
                 <DashboardPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/repositories/:id"
+            element={
+              <ProtectedRoute>
+                <RepositoryDetailPage />
               </ProtectedRoute>
             }
           />

@@ -1,4 +1,4 @@
-import uuid
+﻿import uuid
 from typing import Optional
 from fastapi import Request, Depends, HTTPException, status
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -12,6 +12,9 @@ from src.services.auth_service import AuthService
 from src.services.github_service import GitHubService
 from src.services.repository_service import RepositoryService
 from src.services.ai_service import AIService
+from src.services.clone_service import CloneService
+from src.services.ingestion_service import IngestionService
+from src.services.summary_service import SummaryService
 from src.models.user import User
 
 
@@ -36,6 +39,27 @@ def get_repository_service(
     auth_service: AuthService = Depends(get_auth_service)
 ) -> RepositoryService:
     return RepositoryService(db, github_service, auth_service, AIService())
+
+
+def get_clone_service(
+    db: AsyncSession = Depends(get_db),
+    redis: aioredis.Redis = Depends(get_redis),
+    auth_service: AuthService = Depends(get_auth_service),
+    github_service: GitHubService = Depends(get_github_service)
+) -> CloneService:
+    return CloneService(db, redis, auth_service, github_service)
+
+
+def get_ingestion_service(
+    db: AsyncSession = Depends(get_db)
+) -> IngestionService:
+    return IngestionService(db)
+
+
+def get_summary_service(
+    db: AsyncSession = Depends(get_db)
+) -> SummaryService:
+    return SummaryService(db)
 
 
 async def get_current_session(

@@ -1,5 +1,7 @@
-import logging
+﻿import logging
 import uuid
+import shutil
+from pathlib import Path
 from typing import Optional, List, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, or_, and_
@@ -7,10 +9,12 @@ from sqlalchemy import select, or_, and_
 from src.models.repository import Repository
 from src.models.repository_permission import RepositoryPermission
 from src.models.repository_import import RepositoryImport
+from src.models.job import Job
 from src.services.github_service import GitHubService, parse_github_url, GitHubOAuthError
 from src.services.auth_service import AuthService
 from src.services.crypto_service import crypto_service
 from src.services.ai_service import AIService, AIServiceError
+from src.services.clone_service import get_repository_workspace_path
 
 logger = logging.getLogger(__name__)
 
@@ -278,3 +282,137 @@ class RepositoryService:
                 code="ANALYSIS_FAILED",
             )
         return repo
+    
+    async def search_code(
+        self,
+        repo_id: uuid.UUID,
+        user_id: uuid.UUID,
+        query: str,
+        filters: Optional[Dict[str, Any]] = None,
+        top_k: int = 20,
+    ) -> Dict[str, Any]:
+        """
+        Searches the AI-indexed code of a repository.
+        Ensures the user has repository access before calling the AI service.
+        """
+
+        # 1. Verify repository access
+        repo = await self.get_repository(repo_id, user_id)
+
+        if not repo:
+            raise RepositoryError(
+                "Repository not found or access denied.",
+                code="NOT_FOUND",
+            )
+
+        # 2. Verify AI service availability
+        if not self.ai_service:
+            raise RepositoryError(
+                "AI services are not configured.",
+                code="AI_SERVICE_UNAVAILABLE",
+            )
+
+        # 3. Verify repository is indexed
+        if repo.analysis_status != "READY":
+            raise RepositoryError(
+                "Repository has not been indexed yet. Run repository analysis first.",
+                code="REPOSITORY_NOT_INDEXED",
+            )
+
+        # 4. Search using the same IDs used during indexing
+        try:
+            result = await self.ai_service.search(
+                repo_id=str(repo.id),
+                snapshot_id=repo.tracked_branch,
+                query=query,
+                filters=filters,
+                top_k=top_k,
+            )
+
+            return result
+
+        except AIServiceError as exc:
+            logger.exception(
+                "AI code search failed for repository %s",
+                repo.id,
+            )
+
+            raise RepositoryError(
+                f"Code search failed: {getattr(exc, 'message', str(exc))}",
+                code="AI_SEARCH_FAILED",
+            )    
+    async def delete_repository(
+        self,
+        repo_id: uuid.UUID,
+        user_id: uuid.UUID,
+        clone_service: Optional[Any] = None
+    ) -> bool:
+        """
+        Deletes an imported repository from CodePilot with strict tenant/owner authorization.
+        
+        Actions:
+        1. Verifies user has OWNER authority on the repository.
+        2. Safely cancels any active/running clone or analysis jobs.
+        3. Cleans associated Redis lock and cancel keys.
+        4. Recursively removes the isolated workspace directory from disk storage.
+        5. Deletes repository record and cascades all database entities (snapshots, files, symbols, imports, chunks).
+        
+        CRITICAL SAFETY:
+        Never deletes or modifies the remote repository on GitHub.
+        """
+        stmt = select(Repository).where(Repository.id == repo_id)
+        res = await self.db.execute(stmt)
+        repo = res.scalar_one_or_none()
+        if not repo:
+            raise RepositoryError("Repository not found.", code="NOT_FOUND")
+
+        # Verify OWNER authorization
+        if repo.owner_user_id != user_id:
+            perm_stmt = select(RepositoryPermission).where(
+                RepositoryPermission.repository_id == repo_id,
+                RepositoryPermission.user_id == user_id,
+                RepositoryPermission.role == "OWNER"
+            )
+            perm = (await self.db.execute(perm_stmt)).scalar_one_or_none()
+            if not perm:
+                raise RepositoryError("You do not have permission to delete this repository.", code="FORBIDDEN")
+
+        # 1. Safely handle active jobs and Redis temporary state
+        if clone_service is not None:
+            job_stmt = select(Job).where(
+                Job.repository_id == repo_id,
+                Job.status.in_(["QUEUED", "RUNNING"])
+            )
+            active_jobs = (await self.db.execute(job_stmt)).scalars().all()
+            for job in active_jobs:
+                job.status = "CANCELLED"
+                job.error_message = "Repository was deleted by owner."
+                try:
+                    await clone_service.redis.set(clone_service._cancel_key(job.id), "1", ex=3600)
+                    await clone_service.redis.delete(clone_service._job_progress_key(job.id))
+                except Exception as e:
+                    logger.warning("Could not update Redis for cancelled job %s: %s", job.id, e)
+
+            try:
+                await clone_service.redis.delete(clone_service._lock_key(repo_id))
+            except Exception as e:
+                logger.warning("Could not delete clone lock key for repo %s: %s", repo_id, e)
+
+        # 2. Safely remove workspace directory from disk
+        try:
+            workspace_path = get_repository_workspace_path(repo.owner_user_id, repo.id)
+            if workspace_path.exists() and workspace_path.is_dir():
+                shutil.rmtree(workspace_path, ignore_errors=True)
+                logger.info("Deleted workspace storage directory: %s", workspace_path)
+        except Exception as e:
+            logger.warning("Error deleting workspace directory for repo %s: %s", repo_id, e)
+
+        # 3. Delete database record (cascades snapshots, files, symbols, imports, chunks, jobs, permissions)
+        await self.db.delete(repo)
+        await self.db.commit()
+
+        logger.info(
+            "User %s successfully deleted repository %s (%s/%s) from CodePilot",
+            user_id, repo_id, repo.owner, repo.name
+        )
+        return True

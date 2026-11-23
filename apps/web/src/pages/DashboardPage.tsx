@@ -191,6 +191,11 @@ export const DashboardPage: React.FC = () => {
     }
   };
 
+  const handleDelete = async (repoId: string) => {
+    await repositoryService.deleteRepository(repoId);
+    setImportedRepos((prev) => prev.filter((r) => r.id !== repoId));
+  };
+
   const handleAnalyze = async (repoId: string) => {
     const targetRepo = importedRepos.find((r) => r.id === repoId);
     if (!targetRepo) return;
@@ -533,6 +538,7 @@ export const DashboardPage: React.FC = () => {
                       key={repo.id}
                       repository={repo}
                       onAnalyze={handleAnalyze}
+                      onDelete={handleDelete}
                       onOpenSearch={(r) => setSearchRepo(r)}
                       onOpenExplain={(r) => {
                         setExplainRepo(r);

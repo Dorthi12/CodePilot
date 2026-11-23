@@ -3,7 +3,7 @@ import logging
 import re
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any, Tuple, List
-from urllib.parse import urlencode, urlparse
+from urllib.parse import urlencode, urlparse, urljoin
 import httpx
 import redis.asyncio as aioredis
 
@@ -13,6 +13,7 @@ from src.services.crypto_service import crypto_service
 logger = logging.getLogger(__name__)
 
 GITHUB_HTTP_USER_AGENT = "CodePilot/1.0"
+TRUSTED_GITHUB_API_HOSTS = {"api.github.com"}
 GITHUB_OAUTH_AUTHORIZE_URL = "https://github.com/login/oauth/authorize"
 GITHUB_OAUTH_ACCESS_TOKEN_URL = "https://github.com/login/oauth/access_token"
 GITHUB_API_USER_URL = "https://api.github.com/user"
@@ -324,9 +325,11 @@ class GitHubService:
         """
         Fetches repository details from GitHub API: GET /repos/{owner}/{name}.
         Uses authenticated user's access_token if provided (required for private repos).
-        Handles rate limits, not found, and permission errors gracefully.
+        Handles legitimate GitHub API redirects (e.g. 301 Moved Permanently for renamed/moved repositories)
+        while strictly validating redirect destinations to trusted GitHub API hosts to prevent SSRF
+        and token leakage.
         """
-        url = f"{GITHUB_API_REPOS_URL}/{owner}/{name}"
+        initial_url = f"{GITHUB_API_REPOS_URL}/{owner}/{name}"
         headers = {
             "Accept": "application/vnd.github+json",
             "User-Agent": GITHUB_HTTP_USER_AGENT
@@ -334,9 +337,60 @@ class GitHubService:
         if access_token:
             headers["Authorization"] = f"Bearer {access_token}"
 
+        max_redirects = 5
+        redirect_count = 0
+        current_url = initial_url
+
         async with httpx.AsyncClient(timeout=15.0) as client:
             try:
-                response = await client.get(url, headers=headers)
+                while True:
+                    response = await client.get(current_url, headers=headers)
+
+                    # Handle HTTP redirects (301, 302, 307, 308)
+                    if response.status_code in (301, 302, 307, 308):
+                        redirect_count += 1
+                        if redirect_count > max_redirects:
+                            logger.error("Too many redirects for repository %s/%s", owner, name)
+                            raise GitHubOAuthError(
+                                "Too many redirects encountered while contacting GitHub API.",
+                                code="TOO_MANY_REDIRECTS"
+                            )
+
+                        location = response.headers.get("location")
+                        if not location:
+                            raise GitHubOAuthError(
+                                f"GitHub redirected with status {response.status_code} but provided no Location header.",
+                                code="INVALID_REDIRECT"
+                            )
+
+                        # Parse redirect URL
+                        parsed_loc = urlparse(location)
+                        if not parsed_loc.scheme or not parsed_loc.netloc:
+                            parsed_loc = urlparse(urljoin(current_url, location))
+
+                        # 1. Enforce HTTPS scheme
+                        if parsed_loc.scheme.lower() != "https":
+                            logger.warning("Rejected non-HTTPS redirect destination: %s", location)
+                            raise GitHubOAuthError(
+                                "Redirect to an insecure or unsupported protocol was rejected.",
+                                code="UNTRUSTED_REDIRECT"
+                            )
+
+                        # 2. Enforce trusted GitHub API hosts ONLY (prevents SSRF and token forwarding to untrusted hosts)
+                        target_host = (parsed_loc.hostname or "").lower()
+                        if target_host not in TRUSTED_GITHUB_API_HOSTS:
+                            logger.warning("Rejected redirect to untrusted host: %s", target_host)
+                            raise GitHubOAuthError(
+                                f"Redirect to untrusted host '{target_host}' was rejected for security.",
+                                code="UNTRUSTED_REDIRECT"
+                            )
+
+                        current_url = parsed_loc.geturl()
+                        logger.info("Following GitHub API redirect (%s) to %s", response.status_code, current_url)
+                        continue
+
+                    break
+
                 if response.status_code == 404:
                     raise GitHubOAuthError(
                         f"Repository '{owner}/{name}' was not found on GitHub. If this is a private repository, please ensure your GitHub account has authorized access to it.",
@@ -361,6 +415,13 @@ class GitHubService:
 
                 response.raise_for_status()
                 data = response.json()
+
+                if not isinstance(data, dict) or "id" not in data or "name" not in data or "owner" not in data:
+                    raise GitHubOAuthError(
+                        "Invalid repository metadata returned by GitHub API.",
+                        code="INVALID_METADATA"
+                    )
+
                 return data
 
             except GitHubOAuthError:

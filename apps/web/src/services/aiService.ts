@@ -56,7 +56,7 @@ export const aiService = {
   },
 
   async getRepositoryFiles(repoId: string): Promise<RepositoryFilesResponse> {
-    const response = await api.get<RepositoryFilesResponse>(`/repositories/${repoId}/files`);
+    const response = await api.get<RepositoryFilesResponse>(`/repositories/${repoId}/ai/files`);
     return response.data;
   },
 

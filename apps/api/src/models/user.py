@@ -10,6 +10,7 @@ from src.database import Base
 if TYPE_CHECKING:
     from src.models.oauth_connection import OAuthConnection
     from src.models.repository import Repository
+    from src.models.job import Job
 
 
 class User(Base):
@@ -66,6 +67,12 @@ class User(Base):
     repositories: Mapped[List["Repository"]] = relationship(
         "Repository",
         back_populates="owner_user",
+        cascade="all, delete-orphan",
+        lazy="selectin"
+    )
+    jobs: Mapped[List["Job"]] = relationship(
+        "Job",
+        back_populates="user",
         cascade="all, delete-orphan",
         lazy="selectin"
     )

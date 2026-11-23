@@ -1,3 +1,4 @@
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -8,7 +9,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: codepilot
     ports:
-         - "127.0.0.1:5432:5432"
+      - "127.0.0.1:5432:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
@@ -23,13 +24,35 @@ services:
     restart: unless-stopped
     command: ["redis-server", "--appendonly", "yes"]
     ports:
-        - "127.0.0.1:6379:6379"
+      - "127.0.0.1:6379:6379"
     volumes:
       - redis_data:/data
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s
       timeout: 3s
+      retries: 5
+
+  ai:
+    build:
+      context: .
+      dockerfile: AIservices/Dockerfile
+    container_name: codepilot-ai
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8001:8001"
+    environment:
+      - INDEX_STORAGE_DIR=/app/AIservices/data/indexes
+    volumes:
+      - ai_indexes:/app/AIservices/data/indexes
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""
+        ]
+      interval: 10s
+      timeout: 5s
       retries: 5
 
   api:
@@ -52,7 +75,9 @@ services:
       - FRONTEND_BASE_URL=http://localhost:5173
       - SESSION_SECRET=${SESSION_SECRET:-dev-session-secret-key-must-be-at-least-32-chars-long}
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-dev-token-encryption-key-must-be-32-chars!}
-      - AI_SERVICES_URL=http://ai:8001
+      - WORKSPACE_BASE_DIR=/workspaces
+    volumes:
+      - workspace_data:/workspaces
     depends_on:
       postgres:
         condition: service_healthy
@@ -60,24 +85,6 @@ services:
         condition: service_healthy
       ai:
         condition: service_healthy
-
-  ai:
-    build:
-      context: .
-      dockerfile: AIservices/Dockerfile
-    container_name: codepilot-ai
-    restart: unless-stopped
-    ports:
-      - "127.0.0.1:8001:8001"
-    environment:
-      - INDEX_STORAGE_DIR=/app/AIservices/data/indexes
-    volumes:
-      - ai_indexes:/app/AIservices/data/indexes
-    healthcheck:
-      test: ["CMD-SHELL", "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""]
-      interval: 10s
-      timeout: 5s
-      retries: 5
 
   web:
     build:
@@ -95,4 +102,5 @@ services:
 volumes:
   postgres_data:
   redis_data:
+  workspace_data:
   ai_indexes:
