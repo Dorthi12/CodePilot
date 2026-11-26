@@ -34,8 +34,8 @@ services:
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: codepilot-api
     restart: unless-stopped
     ports:
@@ -53,6 +53,7 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-dev-session-secret-key-must-be-at-least-32-chars-long}
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-dev-token-encryption-key-must-be-32-chars!}
       - WORKSPACE_BASE_DIR=/workspaces
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
     volumes:
       - workspace_data:/workspaces
     depends_on:

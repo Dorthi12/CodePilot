@@ -3,9 +3,11 @@ from src.api.v1.auth import router as auth_router
 from src.api.v1.github import router as github_router
 from src.api.v1.repositories import router as repositories_router
 from src.api.v1.jobs import router as jobs_router
+from src.api.v1.ai import router as ai_router
 
 v1_router = APIRouter(prefix="/api/v1")
 v1_router.include_router(auth_router)
 v1_router.include_router(github_router)
 v1_router.include_router(repositories_router)
 v1_router.include_router(jobs_router)
+v1_router.include_router(ai_router)

@@ -21,10 +21,12 @@ import {
   FileDetailResponse
 } from '../types/repository';
 import { repositoryService } from '../services/repositoryService';
+import { CodeExplainModal } from './CodeExplainModal';
 
 interface CodebaseExplorerProps {
   repositoryId: string;
   initialFilePath?: string;
+  initialTargetLine?: number;
   onFileSelect?: (path: string) => void;
 }
 
@@ -152,6 +154,7 @@ function renderFormattedSummary(summaryText: string): React.ReactNode {
 export const CodebaseExplorer: React.FC<CodebaseExplorerProps> = ({
   repositoryId,
   initialFilePath,
+  initialTargetLine,
   onFileSelect
 }) => {
   // Navigation & Tree State
@@ -171,9 +174,26 @@ export const CodebaseExplorer: React.FC<CodebaseExplorerProps> = ({
   const [summaryError, setSummaryError] = useState<string | null>(null);
 
   // Symbol & Line Jump State
-  const [targetLine, setTargetLine] = useState<number | null>(null);
+  const [targetLine, setTargetLine] = useState<number | null>(initialTargetLine || null);
   const [symbolFilter, setSymbolFilter] = useState<string>('');
   const [selectedKind, setSelectedKind] = useState<string>('ALL');
+
+  // AI Code Explanation Modal State
+  const [explainModal, setExplainModal] = useState<{
+    isOpen: boolean;
+    startLine?: number;
+    endLine?: number;
+    symbolName?: string;
+  }>({ isOpen: false });
+
+  useEffect(() => {
+    if (initialFilePath) {
+      setSelectedPath(initialFilePath);
+    }
+    if (initialTargetLine !== undefined) {
+      setTargetLine(initialTargetLine);
+    }
+  }, [initialFilePath, initialTargetLine]);
 
   // UI Panels
   const [copied, setCopied] = useState<boolean>(false);
@@ -481,14 +501,24 @@ export const CodebaseExplorer: React.FC<CodebaseExplorerProps> = ({
               )}
 
               {fileDetail?.content && (
-                <button
-                  onClick={handleCopyCode}
-                  className="px-2.5 py-1 rounded-lg border border-surface-border text-slate-400 hover:text-slate-200 hover:bg-surface-dark text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
-                  title="Copy code to clipboard"
-                >
-                  {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copied ? 'Copied' : 'Copy'}</span>
-                </button>
+                <>
+                  <button
+                    onClick={() => setExplainModal({ isOpen: true })}
+                    className="px-2.5 py-1 rounded-lg border border-brand-500/40 bg-brand-500/10 text-brand-300 hover:bg-brand-500/20 text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+                    title="Explain this file or a line range with AI"
+                  >
+                    <Sparkles className="w-3.5 h-3.5" />
+                    <span>Explain</span>
+                  </button>
+                  <button
+                    onClick={handleCopyCode}
+                    className="px-2.5 py-1 rounded-lg border border-surface-border text-slate-400 hover:text-slate-200 hover:bg-surface-dark text-xs flex items-center space-x-1.5 transition-colors cursor-pointer"
+                    title="Copy code to clipboard"
+                  >
+                    {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+                    <span>{copied ? 'Copied' : 'Copy'}</span>
+                  </button>
+                </>
               )}
 
               <button
@@ -746,9 +776,27 @@ export const CodebaseExplorer: React.FC<CodebaseExplorerProps> = ({
                           )}
                         </div>
 
-                        <span className="text-[10px] font-mono text-slate-500 group-hover:text-brand-400 flex-shrink-0">
-                          L{sym.start_line}
-                        </span>
+                        <div className="flex items-center space-x-1.5 flex-shrink-0">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExplainModal({
+                                isOpen: true,
+                                startLine: sym.start_line,
+                                endLine: sym.end_line,
+                                symbolName: sym.name,
+                              });
+                            }}
+                            className="p-1 rounded-lg text-slate-500 hover:text-brand-300 hover:bg-brand-500/15 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
+                            title={`Explain ${sym.name}`}
+                          >
+                            <Sparkles className="w-3 h-3" />
+                          </button>
+                          <span className="text-[10px] font-mono text-slate-500 group-hover:text-brand-400">
+                            L{sym.start_line}
+                          </span>
+                        </div>
                       </div>
                     ))}
                   </div>
@@ -811,6 +859,24 @@ export const CodebaseExplorer: React.FC<CodebaseExplorerProps> = ({
           </div>
         )}
       </div>
+
+      {fileDetail && (
+        <CodeExplainModal
+          isOpen={explainModal.isOpen}
+          onClose={() => setExplainModal({ isOpen: false })}
+          repositoryId={repositoryId}
+          filePath={fileDetail.path}
+          totalLines={fileDetail.line_count}
+          initialStartLine={explainModal.startLine}
+          initialEndLine={explainModal.endLine}
+          symbolName={explainModal.symbolName}
+          onNavigateToLocation={(path, line) => {
+            setSelectedPath(path);
+            setTargetLine(line);
+            if (onFileSelect) onFileSelect(path);
+          }}
+        />
+      )}
     </div>
   );
 };

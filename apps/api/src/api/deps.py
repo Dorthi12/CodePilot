@@ -14,6 +14,7 @@ from src.services.repository_service import RepositoryService
 from src.services.clone_service import CloneService
 from src.services.ingestion_service import IngestionService
 from src.services.summary_service import SummaryService
+from src.services.ai_service import AIServiceBridge
 from src.models.user import User
 
 
@@ -59,6 +60,12 @@ def get_summary_service(
     db: AsyncSession = Depends(get_db)
 ) -> SummaryService:
     return SummaryService(db)
+
+
+def get_ai_service(
+    db: AsyncSession = Depends(get_db)
+) -> AIServiceBridge:
+    return AIServiceBridge(db)
 
 
 async def get_current_session(
