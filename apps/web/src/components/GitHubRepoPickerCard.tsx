@@ -117,12 +117,12 @@ export const GitHubRepoPickerCard: React.FC<GitHubRepoPickerCardProps> = ({ repo
             {isImporting ? (
               <>
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Importing...</span>
+                <span>Starting Ingestion...</span>
               </>
             ) : (
               <>
                 <Plus className="w-3.5 h-3.5" />
-                <span>Import Repository</span>
+                <span>Start Ingestion</span>
               </>
             )}
           </button>

@@ -15,7 +15,6 @@ interface ImportByUrlCardProps {
 
 export const ImportByUrlCard: React.FC<ImportByUrlCardProps> = ({ onImport }) => {
   const [url, setUrl] = useState('');
-  const [branch, setBranch] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -26,9 +25,8 @@ export const ImportByUrlCard: React.FC<ImportByUrlCardProps> = ({ onImport }) =>
     setError(null);
     setIsSubmitting(true);
     try {
-      await onImport(url.trim(), branch.trim() || undefined);
+      await onImport(url.trim());
       setUrl('');
-      setBranch('');
     } catch (err: unknown) {
       if (err && typeof err === 'object' && 'response' in err) {
         const axErr = err as { response?: { data?: { error?: { message?: string } } } };
@@ -80,38 +78,24 @@ export const ImportByUrlCard: React.FC<ImportByUrlCardProps> = ({ onImport }) =>
       )}
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-          <div className="md:col-span-2">
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              GitHub Repository URL or Identifier
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={url}
-                onChange={(e) => setUrl(e.target.value)}
-                placeholder="https://github.com/owner/repository or owner/repo"
-                className="w-full px-4 py-3 bg-surface-dark/90 border border-surface-border rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400 font-mono transition-colors"
-                required
-              />
-            </div>
+        <div>
+          <label className="block text-xs font-semibold text-slate-300 mb-1.5">
+            GitHub Repository URL or Identifier
+          </label>
+          <div className="relative">
+            <input
+              type="text"
+              value={url}
+              onChange={(e) => setUrl(e.target.value)}
+              placeholder="https://github.com/owner/repository or owner/repo"
+              className="w-full px-4 py-3 bg-surface-dark/90 border border-surface-border rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400 font-mono transition-colors"
+              required
+            />
           </div>
-
-          <div>
-            <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-              Tracked Branch (Optional)
-            </label>
-            <div className="relative">
-              <input
-                type="text"
-                value={branch}
-                onChange={(e) => setBranch(e.target.value)}
-                placeholder="e.g. main, master, dev"
-                className="w-full px-4 py-3 bg-surface-dark/90 border border-surface-border rounded-xl text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-brand-400 focus:ring-1 focus:ring-brand-400 font-mono transition-colors"
-              />
-              <GitBranch className="w-4 h-4 text-slate-500 absolute right-3 top-3.5 pointer-events-none" />
-            </div>
-          </div>
+          <p className="text-[11px] text-slate-500 mt-1.5 flex items-center space-x-1.5">
+            <GitBranch className="w-3 h-3 text-brand-400" />
+            <span>Default branch and retrieval method are automatically detected from GitHub.</span>
+          </p>
         </div>
 
         {/* Popular public repo examples */}
@@ -144,12 +128,12 @@ export const ImportByUrlCard: React.FC<ImportByUrlCardProps> = ({ onImport }) =>
             {isSubmitting ? (
               <>
                 <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Validating & Importing...</span>
+                <span>Starting Ingestion...</span>
               </>
             ) : (
               <>
                 <Sparkles className="w-4 h-4" />
-                <span>Import & Validate</span>
+                <span>Start Ingestion</span>
                 <ArrowRight className="w-3.5 h-3.5" />
               </>
             )}

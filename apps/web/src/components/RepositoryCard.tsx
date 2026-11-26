@@ -204,7 +204,7 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({ repository, onAn
           ) : (
             <>
               <Sparkles className="w-3.5 h-3.5" />
-              <span>Clone & Ingest</span>
+              <span>Start Ingestion</span>
             </>
           )}
         </button>

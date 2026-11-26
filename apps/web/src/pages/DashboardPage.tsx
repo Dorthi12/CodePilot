@@ -53,6 +53,7 @@ export const DashboardPage: React.FC = () => {
   // GitHub account picker state
   const [gitHubRepos, setGitHubRepos] = useState<GitHubRepoPickerItem[]>([]);
   const [selectedRepoForIngestion, setSelectedRepoForIngestion] = useState<Repository | null>(null);
+  const [autoStartIngestion, setAutoStartIngestion] = useState<boolean>(false);
   const [gitHubReposLoading, setGitHubReposLoading] = useState<boolean>(false);
   const [gitHubSearch, setGitHubSearch] = useState<string>('');
   const [gitHubPage, setGitHubPage] = useState<number>(1);
@@ -139,8 +140,10 @@ export const DashboardPage: React.FC = () => {
   const handleImportSuccess = async (url: string, branch?: string) => {
     try {
       const repo = await repositoryService.importRepository({ url, branch });
-      showToast('success', `Repository '${repo.owner}/${repo.name}' was imported successfully.`);
+      showToast('success', `Repository '${repo.owner}/${repo.name}' imported. Starting ingestion...`);
       setActiveTab('imported');
+      setAutoStartIngestion(true);
+      setSelectedRepoForIngestion(repo);
       await fetchImportedRepositories();
     } catch (err: unknown) {
       let msg = 'Failed to import repository.';
@@ -156,6 +159,7 @@ export const DashboardPage: React.FC = () => {
   const handleAnalyze = async (repoId: string) => {
     const repo = importedRepos.find(r => r.id === repoId);
     if (repo) {
+      setAutoStartIngestion(true);
       setSelectedRepoForIngestion(repo);
     }
   };
@@ -784,7 +788,11 @@ export const DashboardPage: React.FC = () => {
           <IngestionProgressModal
             repository={selectedRepoForIngestion}
             isOpen={Boolean(selectedRepoForIngestion)}
-            onClose={() => setSelectedRepoForIngestion(null)}
+            autoStart={autoStartIngestion}
+            onClose={() => {
+              setSelectedRepoForIngestion(null);
+              setAutoStartIngestion(false);
+            }}
             onComplete={() => {
               fetchImportedRepositories();
             }}
