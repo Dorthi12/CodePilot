@@ -148,6 +148,7 @@ class IngestionService:
         total_files = 0
         total_lines = 0
         lang_distribution: Dict[str, int] = {}
+        files_dict: Dict[str, str] = {}
 
         # Collect all valid files
         for root, dirs, files in os.walk(workspace_path):
@@ -167,6 +168,12 @@ class IngestionService:
                 total_lines += parsed.line_count
                 if parsed.language:
                     lang_distribution[parsed.language] = lang_distribution.get(parsed.language, 0) + 1
+
+                try:
+                    if full_file_path.stat().st_size <= 2 * 1024 * 1024:
+                        files_dict[parsed.path] = full_file_path.read_text(encoding="utf-8", errors="ignore")
+                except Exception:
+                    pass
 
                 # 1. Create RepoFile
                 repo_file = RepoFile(
@@ -251,6 +258,26 @@ class IngestionService:
             "Ingestion completed for repo %s (snapshot %s): %d files, %d lines",
             repository_id, snapshot.id, total_files, total_lines
         )
+
+        # Build and persist RepoIndex into authoritative Redis store
+        if files_dict:
+            try:
+                from AIservices.core.parser import index_repository
+                from AIservices.api.index_store import save_index
+
+                ai_repo_index = index_repository(
+                    repo_id=str(repository_id),
+                    snapshot_id=str(snapshot.id),
+                    files=files_dict,
+                )
+                save_index(ai_repo_index)
+                logger.info(
+                    "Persisted AI RepoIndex to Redis for repo %s snapshot %s (%d symbols, %d chunks)",
+                    repository_id, snapshot.id, len(ai_repo_index.symbols), len(ai_repo_index.chunks)
+                )
+            except Exception as ai_exc:
+                logger.warning("Could not persist AI RepoIndex to Redis during ingestion: %s", ai_exc)
+
         return snapshot
 
     async def get_latest_snapshot(self, repository_id: uuid.UUID) -> Optional[Snapshot]:

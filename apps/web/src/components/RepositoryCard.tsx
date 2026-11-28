@@ -257,134 +257,32 @@ export const RepositoryCard: React.FC<RepositoryCardProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
-
-          {/* Main Action Button */}
-          <button
-            type="button"
-            onClick={handleActionClick}
-            disabled={isAnalyzing}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
-              isReady
-                ? 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
-                : 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
-            } disabled:opacity-50`}
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Opening...</span>
-              </>
-            ) : isReady ? (
-              <>
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Explore Codebase</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>Clone & Ingest</span>
-              </>
-            )}
-          </button>
-
-          {/* Search Button */}
-          {/* AI Tools Menu */}
-{isReady && (onOpenSearch || onOpenExplain) && (
-  <div className="relative">
-    <button
-      type="button"
-      onClick={(e) => {
-        e.stopPropagation();
-        setIsAIToolsOpen((prev) => !prev);
-      }}
-      className="px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30 transition-all cursor-pointer"
-      title="AI Tools"
-    >
-      <Sparkles className="w-3.5 h-3.5" />
-      <span>AI Tools</span>
-    </button>
-
-    {isAIToolsOpen && (
-      <div
-        className="absolute right-0 bottom-full mb-2 w-48 bg-surface-darker border border-surface-border rounded-xl shadow-xl z-30 p-1.5"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {onOpenSearch && (
-          <button
-            type="button"
-            onClick={() => {
-              setIsAIToolsOpen(false);
-              onOpenSearch(repository);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs text-slate-200 hover:bg-surface-dark transition-colors cursor-pointer"
-          >
-            <Search className="w-4 h-4 text-brand-400" />
-            <span>Code Search</span>
-          </button>
-        )}
-
-        {onOpenExplain && (
-          <button
-            type="button"
-            onClick={() => {
-              setIsAIToolsOpen(false);
-              onOpenExplain(repository);
-            }}
-            className="w-full flex items-center gap-2 px-3 py-2.5 rounded-lg text-xs text-slate-200 hover:bg-surface-dark transition-colors cursor-pointer"
-          >
-            <BookOpen className="w-4 h-4 text-brand-400" />
-            <span>Code Explanation</span>
-          </button>
-        )}
-      </div>
-    )}
-  </div>
-)}
-
-          {/* Explain Button */}
-          {/* {isReady && onOpenExplain && (
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                onOpenExplain(repository);
-              }}
-              className="px-2.5 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1 bg-surface-dark hover:bg-surface-border/60 text-slate-200 border border-surface-border transition-all cursor-pointer"
-              title="Explain code with AI"
-            >
-              <BookOpen className="w-3.5 h-3.5 text-brand-400" />
-              <span>Explain</span>
-            </button>
-          )} */}
-
-          {/* Analyze / Re-Analyze Button */}
-          <button
-            type="button"
-            onClick={handleAnalyzeClick}
-            disabled={isAnalyzing}
-            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
-              isReady
-                ? 'bg-brand-500/10 hover:bg-brand-500/20 text-brand-300 border border-brand-500/30'
-                : 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
-            } disabled:opacity-50`}
-          >
-            {isAnalyzing ? (
-              <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                <span>Queuing...</span>
-              </>
-            ) : (
-              <>
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>
-                  {isReady ? 'Re-Analyze' : 'Analyze Repository'}
-                </span>
-              </>
-            )}
-          </button>
-
-        </div>
+        <button
+          onClick={handleActionClick}
+          disabled={isAnalyzing}
+          className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center space-x-1.5 transition-all cursor-pointer ${
+            isReady
+              ? 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
+              : 'bg-brand-500 hover:bg-brand-400 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
+          } disabled:opacity-50`}
+        >
+          {isAnalyzing ? (
+            <>
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <span>Opening...</span>
+            </>
+          ) : isReady ? (
+            <>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Explore Codebase</span>
+            </>
+          ) : (
+            <>
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Start Ingestion</span>
+            </>
+          )}
+        </button>
       </div>
 
       {/* Delete Confirmation Modal */}

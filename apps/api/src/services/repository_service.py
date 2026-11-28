@@ -407,7 +407,16 @@ class RepositoryService:
         except Exception as e:
             logger.warning("Error deleting workspace directory for repo %s: %s", repo_id, e)
 
-        # 3. Delete database record (cascades snapshots, files, symbols, imports, chunks, jobs, permissions)
+        # 3. Safely delete AI indexes from Redis
+        try:
+            from AIservices.api.index_store import list_indexes, delete_index
+            for item in list_indexes():
+                if item.get("repo_id") == str(repo_id):
+                    delete_index(item["repo_id"], item["snapshot_id"])
+        except Exception as e:
+            logger.warning("Could not clean Redis AI index for repo %s: %s", repo_id, e)
+
+        # 4. Delete database record (cascades snapshots, files, symbols, imports, chunks, jobs, permissions)
         await self.db.delete(repo)
         await self.db.commit()
 

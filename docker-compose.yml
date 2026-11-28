@@ -40,25 +40,18 @@ services:
     container_name: codepilot-ai
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8001:8001"
+      - "8001:8001"
     environment:
-      - INDEX_STORAGE_DIR=/app/AIservices/data/indexes
-    volumes:
-      - ai_indexes:/app/AIservices/data/indexes
-    healthcheck:
-      test:
-        [
-          "CMD-SHELL",
-          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8001/health')\""
-        ]
-      interval: 10s
-      timeout: 5s
-      retries: 5
+      - REDIS_URL=redis://redis:6379/0
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+    depends_on:
+      redis:
+        condition: service_healthy
 
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: codepilot-api
     restart: unless-stopped
     ports:
@@ -76,6 +69,8 @@ services:
       - SESSION_SECRET=${SESSION_SECRET:-dev-session-secret-key-must-be-at-least-32-chars-long}
       - TOKEN_ENCRYPTION_KEY=${TOKEN_ENCRYPTION_KEY:-dev-token-encryption-key-must-be-32-chars!}
       - WORKSPACE_BASE_DIR=/workspaces
+      - GEMINI_API_KEY=${GEMINI_API_KEY:-}
+      - AI_SERVICES_URL=http://ai:8001
     volumes:
       - workspace_data:/workspaces
     depends_on:
@@ -84,7 +79,7 @@ services:
       redis:
         condition: service_healthy
       ai:
-        condition: service_healthy
+        condition: service_started
 
   web:
     build:

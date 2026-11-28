@@ -1,12 +1,13 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { useParams, useNavigate, Link } from 'react-router-dom';
+import { useParams, useNavigate, useSearchParams, Link } from 'react-router-dom';
 import { Navbar } from '../components/Navbar';
 import { repositoryService } from '../services/repositoryService';
 import { RepositoryProcessingStatus } from '../components/RepositoryProcessingStatus';
 import { CodebaseExplorer } from '../components/CodebaseExplorer';
 import { FileSummariesView } from '../components/FileSummariesView';
-import { CodeSearchModal } from '../components/CodeSearchModal';
-import { CodeExplanationModal } from '../components/CodeExplanationModal';
+import { CodeSearchView } from '../components/CodeSearchView';
+import { aiService, extractAIErrorMessage } from '../services/aiService';
+import { RepoIndexResponse } from '../types/ai';
 import {
   Repository,
   RepositoryOverviewResponse
@@ -21,6 +22,9 @@ import {
   Layers,
   Code2,
   FileText,
+  Search,
+  Sparkles,
+  CheckCircle2,
   ChevronRight,
   ArrowLeft,
   Loader2,
@@ -34,20 +38,55 @@ import {
   Sparkles
 } from 'lucide-react';
 
-type TabType = 'overview' | 'explorer' | 'summaries';
+type TabType = 'overview' | 'explorer' | 'search' | 'summaries';
 
 export const RepositoryDetailPage: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
 
-  const [activeTab, setActiveTab] = useState<TabType>('overview');
+  const initialTabParam = searchParams.get('tab');
+  const initialTab: TabType =
+    initialTabParam === 'explorer' ||
+    initialTabParam === 'search' ||
+    initialTabParam === 'summaries' ||
+    initialTabParam === 'overview'
+      ? initialTabParam
+      : 'overview';
+  const initialFileParam = searchParams.get('file') || undefined;
+  const initialLineRaw = searchParams.get('line');
+  const initialLineParam = initialLineRaw && !Number.isNaN(Number(initialLineRaw))
+    ? Number(initialLineRaw)
+    : undefined;
+
+  const [activeTab, setActiveTab] = useState<TabType>(initialTab);
   const [repository, setRepository] = useState<Repository | null>(null);
   const [overview, setOverview] = useState<RepositoryOverviewResponse | null>(null);
   const [loading, setLoading] = useState<boolean>(true);
   const [error, setError] = useState<string | null>(null);
 
-  // Selected file to open directly in Code Explorer (e.g. from File Summaries)
-  const [selectedFileForExplorer, setSelectedFileForExplorer] = useState<string | undefined>(undefined);
+  // Selected file & line to open directly in Code Explorer (e.g. from File Summaries or Code Search)
+  const [selectedFileForExplorer, setSelectedFileForExplorer] = useState<string | undefined>(initialFileParam);
+  const [selectedLineForExplorer, setSelectedLineForExplorer] = useState<number | undefined>(initialLineParam);
+
+  // AI Indexing State (explicitly triggered by user action, never auto-run on render)
+  const [isIndexingAI, setIsIndexingAI] = useState(false);
+  const [aiIndexResult, setAiIndexResult] = useState<RepoIndexResponse | null>(null);
+  const [aiIndexError, setAiIndexError] = useState<string | null>(null);
+
+  const handleIndexForAI = async (force = false) => {
+    if (!id || isIndexingAI) return;
+    setIsIndexingAI(true);
+    setAiIndexError(null);
+    try {
+      const res = await aiService.indexRepository(id, { force });
+      setAiIndexResult(res);
+    } catch (err) {
+      setAiIndexError(extractAIErrorMessage(err, 'Failed to index repository for AI search and explanation.'));
+    } finally {
+      setIsIndexingAI(false);
+    }
+  };
 
   // AI Feature Modals state
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
@@ -98,8 +137,9 @@ export const RepositoryDetailPage: React.FC = () => {
     fetchRepoData();
   }, [fetchRepoData]);
 
-  const handleOpenFileInExplorer = (filePath: string) => {
+  const handleOpenFileInExplorer = (filePath: string, line?: number) => {
     setSelectedFileForExplorer(filePath);
+    setSelectedLineForExplorer(line);
     setActiveTab('explorer');
   };
 
@@ -319,6 +359,18 @@ export const RepositoryDetailPage: React.FC = () => {
             </button>
 
             <button
+              onClick={() => setActiveTab('search')}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 cursor-pointer transition-all ${
+                activeTab === 'search'
+                  ? 'bg-brand-500 text-surface-darkest font-bold shadow-md shadow-brand-500/20'
+                  : 'text-slate-400 hover:text-slate-200 hover:bg-surface-dark'
+              }`}
+            >
+              <Search className="w-3.5 h-3.5" />
+              <span>Code Search</span>
+            </button>
+
+            <button
               onClick={() => setActiveTab('summaries')}
               className={`px-4 py-2 rounded-xl text-xs font-semibold flex items-center space-x-2 cursor-pointer transition-all ${
                 activeTab === 'summaries'
@@ -367,6 +419,73 @@ export const RepositoryDetailPage: React.FC = () => {
               onRefreshRepo={fetchRepoData}
               onExploreClick={() => setActiveTab('explorer')}
             />
+
+            {/* AI Code Intelligence Indexing Card */}
+            <div className="bg-surface-darker/90 border border-surface-border/70 rounded-2xl p-6 shadow-xl space-y-4">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-slate-200 flex items-center space-x-2">
+                    <Sparkles className="w-4 h-4 text-brand-400" />
+                    <span>AI Code Search &amp; Explanation Index</span>
+                  </h3>
+                  <p className="text-xs text-slate-400">
+                    Prepare the analyzed snapshot for multi-mode symbol search and context-grounded AI explanations.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handleIndexForAI(false)}
+                  disabled={isIndexingAI}
+                  className="px-4 py-2 rounded-xl bg-brand-500 hover:bg-brand-400 text-surface-darkest text-xs font-bold flex items-center justify-center space-x-2 transition-colors cursor-pointer disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
+                >
+                  {isIndexingAI ? (
+                    <>
+                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                      <span>Indexing...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="w-3.5 h-3.5" />
+                      <span>{aiIndexResult ? 'Verify / Refresh Index' : 'Index for AI Search & Explain'}</span>
+                    </>
+                  )}
+                </button>
+              </div>
+
+              {aiIndexError && (
+                <div className="bg-rose-950/30 border border-rose-800/50 rounded-xl p-3 flex items-start space-x-2.5 text-xs text-rose-200">
+                  <AlertCircle className="w-4 h-4 text-rose-400 flex-shrink-0 mt-0.5" />
+                  <span>{aiIndexError}</span>
+                </div>
+              )}
+
+              {aiIndexResult && (
+                <div className="bg-emerald-950/20 border border-emerald-800/40 rounded-xl p-3.5 flex flex-wrap items-center justify-between gap-3 text-xs">
+                  <div className="flex items-center space-x-2 text-emerald-300">
+                    <CheckCircle2 className="w-4 h-4 flex-shrink-0" />
+                    <span>{aiIndexResult.message}</span>
+                  </div>
+                  <div className="flex items-center space-x-2 font-mono">
+                    <span className="px-2 py-0.5 rounded-full bg-surface-dark border border-surface-border text-slate-200">
+                      {aiIndexResult.file_count} files
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-surface-dark border border-surface-border text-brand-300">
+                      {aiIndexResult.symbol_count} symbols
+                    </span>
+                    <span
+                      className={`px-2 py-0.5 rounded-full border ${
+                        aiIndexResult.cached
+                          ? 'bg-sky-950/50 border-sky-800/50 text-sky-300'
+                          : 'bg-emerald-950/50 border-emerald-800/50 text-emerald-300'
+                      }`}
+                    >
+                      {aiIndexResult.cached ? 'Cached' : 'Freshly Indexed'}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
 
             {/* Language Breakdown & Architecture Card */}
             {overview && Object.keys(overview.languages).length > 0 && (
@@ -444,6 +563,7 @@ export const RepositoryDetailPage: React.FC = () => {
           <CodebaseExplorer
             repositoryId={repository.id}
             initialFilePath={selectedFileForExplorer}
+            initialTargetLine={selectedLineForExplorer}
             onFileSelect={path => setSelectedFileForExplorer(path)}
             onExplainCode={(code, filePath, startLine, endLine) => {
               setExplainSnippetPreload({ code, filePath, startLine, endLine });
@@ -452,7 +572,15 @@ export const RepositoryDetailPage: React.FC = () => {
           />
         )}
 
-        {/* Tab 3: File Summaries */}
+        {/* Tab 3: Code Search */}
+        {activeTab === 'search' && (
+          <CodeSearchView
+            repositoryId={repository.id}
+            onSelectResult={handleOpenFileInExplorer}
+          />
+        )}
+
+        {/* Tab 4: File Summaries */}
         {activeTab === 'summaries' && (
           <FileSummariesView
             repositoryId={repository.id}

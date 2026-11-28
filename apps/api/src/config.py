@@ -71,6 +71,12 @@ class Settings(BaseSettings):
     MAX_WORKSPACE_DISK_USAGE_MB: int = Field(default=1000, description="Maximum disk quota per cloned workspace in MB (1 GB)")
     CLONE_TIMEOUT_SECONDS: int = Field(default=300, description="Maximum timeout for clone operations in seconds (5 minutes)")
 
+    # Optional AI / LLM Provider
+    GEMINI_API_KEY: Optional[str] = Field(
+        default=None,
+        description="Optional Google Gemini API key for AI code explanation (falls back to offline StaticAnalysisProvider if unset)"
+    )
+
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",

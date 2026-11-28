@@ -11,15 +11,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     git \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy dependency files
-COPY requirements.txt requirements-dev.txt ./
-
-# Install Python dependencies
+COPY apps/api/requirements.txt apps/api/requirements-dev.txt ./
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir -r requirements.txt
 
-# Copy application source code
-COPY . .
+COPY apps/api/ .
+COPY AIservices/ ./AIservices/
 
 # Expose FastAPI port
 EXPOSE 8000

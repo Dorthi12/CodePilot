@@ -25,7 +25,7 @@ from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 from AIservices.core.language_utils import detect_language, is_supported
-from AIservices.core.models import CodeSymbol, RepoIndex, SymbolKind, SupportedLanguage
+from AIservices.core.models import CodeChunk, CodeSymbol, RepoIndex, SymbolKind, SupportedLanguage
 
 logger = logging.getLogger(__name__)
 
@@ -584,6 +584,7 @@ def index_repository(
     *files* is whatever the caller supplies — no GitHub auth here.
     """
     all_symbols: list[CodeSymbol] = []
+    all_chunks: list[CodeChunk] = []
     all_warnings: list[str] = []
 
     for file_path, source in files.items():
@@ -593,11 +594,94 @@ def index_repository(
         syms, warns = extract_symbols(source, file_path, repo_id, snapshot_id)
         all_symbols.extend(syms)
         all_warnings.extend(warns)
+        chunks = _generate_file_chunks(file_path, source, syms, repo_id, snapshot_id)
+        all_chunks.extend(chunks)
 
     return RepoIndex(
         repo_id=repo_id,
         snapshot_id=snapshot_id,
         symbols=all_symbols,
+        chunks=all_chunks,
         files=files,
         warnings=all_warnings,
     )
+
+
+def _generate_file_chunks(
+    file_path: str,
+    source: str,
+    symbols: list[CodeSymbol],
+    repo_id: str,
+    snapshot_id: str,
+) -> list[CodeChunk]:
+    chunks: list[CodeChunk] = []
+    lines = source.splitlines()
+    total_lines = len(lines)
+    if total_lines == 0:
+        return chunks
+
+    seen_ranges: set[tuple[int, int, str]] = set()
+
+    for sym in symbols:
+        if sym.file_path != file_path:
+            continue
+        range_key = (sym.start_line, sym.end_line, sym.name)
+        if range_key in seen_ranges:
+            continue
+        seen_ranges.add(range_key)
+
+        content = sym.snippet if sym.snippet else "\n".join(lines[sym.start_line - 1 : sym.end_line])
+        if not content.strip():
+            continue
+
+        raw_id = f"{repo_id}|{file_path}|{sym.start_line}|{sym.end_line}|{sym.name}"
+        chunk_id = hashlib.sha256(raw_id.encode()).hexdigest()[:32]
+        c_hash = hashlib.sha256(content.encode()).hexdigest()
+        token_est = max(1, len(content) // 4)
+
+        chunks.append(
+            CodeChunk(
+                chunk_id=chunk_id,
+                file_path=file_path,
+                chunk_type=sym.kind if isinstance(sym.kind, str) else sym.kind.value,
+                start_line=sym.start_line,
+                end_line=sym.end_line,
+                content=content,
+                symbol_name=sym.name,
+                token_count=token_est,
+                content_hash=c_hash,
+            )
+        )
+
+    if not chunks:
+        block_size = 50
+        overlap = 10
+        i = 0
+        while i < total_lines:
+            end = min(i + block_size, total_lines)
+            block_lines = lines[i:end]
+            content = "\n".join(block_lines)
+            start_l = i + 1
+            end_l = end
+            raw_id = f"{repo_id}|{file_path}|{start_l}|{end_l}|block"
+            chunk_id = hashlib.sha256(raw_id.encode()).hexdigest()[:32]
+            c_hash = hashlib.sha256(content.encode()).hexdigest()
+            token_est = max(1, len(content) // 4)
+            chunks.append(
+                CodeChunk(
+                    chunk_id=chunk_id,
+                    file_path=file_path,
+                    chunk_type="BLOCK",
+                    start_line=start_l,
+                    end_line=end_l,
+                    content=content,
+                    symbol_name=None,
+                    token_count=token_est,
+                    content_hash=c_hash,
+                )
+            )
+            if end == total_lines:
+                break
+            i += (block_size - overlap)
+
+    return chunks

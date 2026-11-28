@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   X, 
@@ -22,6 +22,7 @@ import { repositoryService } from '../services/repositoryService';
 interface IngestionProgressModalProps {
   repository: Repository;
   isOpen: boolean;
+  autoStart?: boolean;
   onClose: () => void;
   onComplete?: () => void;
 }
@@ -39,18 +40,18 @@ const STAGES: { key: JobStage; label: string }[] = [
 export const IngestionProgressModal: React.FC<IngestionProgressModalProps> = ({
   repository,
   isOpen,
+  autoStart = false,
   onClose,
   onComplete
 }) => {
   const navigate = useNavigate();
   const [job, setJob] = useState<IngestionJob | null>(null);
-  const [selectedMethod, setSelectedMethod] = useState<RetrievalMethod>('GIT_CLONE');
-  const [selectedBranch, setSelectedBranch] = useState<string>(
-    repository.tracked_branch || repository.default_branch || 'main'
-  );
+  const selectedMethod: RetrievalMethod = 'GIT_CLONE';
+  const selectedBranch = repository.tracked_branch || repository.default_branch || 'main';
   const [isLoading, setIsLoading] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
+  const autoStartedRef = useRef<string | null>(null);
 
   // Poll job status
   useEffect(() => {
@@ -64,6 +65,23 @@ export const IngestionProgressModal: React.FC<IngestionProgressModalProps> = ({
         const latestJob = await repositoryService.getCloneStatus(repository.id);
         if (isMounted) {
           setJob(latestJob);
+          if (!latestJob && autoStart && autoStartedRef.current !== repository.id) {
+            autoStartedRef.current = repository.id;
+            setIsLoading(true);
+            try {
+              const newJob = await repositoryService.cloneRepository(repository.id, {
+                branch: selectedBranch,
+                retrieval_method: selectedMethod
+              });
+              if (isMounted) setJob(newJob);
+            } catch (startErr: any) {
+              if (isMounted) {
+                setErrorMsg(startErr.response?.data?.error?.message || startErr.message || 'Failed to start ingestion.');
+              }
+            } finally {
+              if (isMounted) setIsLoading(false);
+            }
+          }
           if (latestJob?.status === 'SUCCEEDED' && onComplete) {
             onComplete();
           }
@@ -187,64 +205,24 @@ export const IngestionProgressModal: React.FC<IngestionProgressModalProps> = ({
 
         {/* Body */}
         <div className="p-6 overflow-y-auto space-y-6">
-          {/* If no job active and never cloned, show configuration options */}
+          {/* Ready-to-ingest summary (auto-detected branch and retrieval method) */}
           {!job && (
-            <div className="space-y-4">
-              <div className="bg-surface-dark/60 border border-surface-border/60 rounded-2xl p-4 space-y-3">
-                <label className="text-xs font-semibold text-slate-300 block">
-                  Select Retrieval Method
-                </label>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('GIT_CLONE')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                      selectedMethod === 'GIT_CLONE'
-                        ? 'border-brand-500/80 bg-brand-500/10 text-slate-100'
-                        : 'border-surface-border bg-surface-dark text-slate-400 hover:border-slate-600'
-                    }`}
-                  >
-                    <div className="font-semibold text-xs mb-1 flex items-center space-x-1.5">
-                      <FolderGit2 className="w-3.5 h-3.5 text-brand-400" />
-                      <span>GIT_CLONE</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Standard shallow git clone with live object reception progress.
-                    </p>
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={() => setSelectedMethod('ZIP_DOWNLOAD')}
-                    className={`p-3 rounded-xl border text-left transition-all cursor-pointer ${
-                      selectedMethod === 'ZIP_DOWNLOAD'
-                        ? 'border-brand-500/80 bg-brand-500/10 text-slate-100'
-                        : 'border-surface-border bg-surface-dark text-slate-400 hover:border-slate-600'
-                    }`}
-                  >
-                    <div className="font-semibold text-xs mb-1 flex items-center space-x-1.5">
-                      <Download className="w-3.5 h-3.5 text-brand-400" />
-                      <span>ZIP_DOWNLOAD</span>
-                    </div>
-                    <p className="text-[11px] text-slate-400">
-                      Streams compressed archive with exact downloaded byte tracking.
-                    </p>
-                  </button>
-                </div>
+            <div className="bg-surface-dark/60 border border-surface-border/60 rounded-2xl p-4 space-y-3">
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Detected Default Branch</span>
+                <span className="font-mono text-slate-200 bg-surface-darkest px-2.5 py-1 rounded-lg border border-surface-border">
+                  {selectedBranch}
+                </span>
               </div>
-
-              <div className="bg-surface-dark/60 border border-surface-border/60 rounded-2xl p-4 space-y-2">
-                <label className="text-xs font-semibold text-slate-300 block">
-                  Tracked Branch
-                </label>
-                <input
-                  type="text"
-                  value={selectedBranch}
-                  onChange={(e) => setSelectedBranch(e.target.value)}
-                  placeholder="main"
-                  className="w-full bg-surface-darkest border border-surface-border rounded-xl px-3 py-2 text-xs font-mono text-slate-200 focus:outline-none focus:border-brand-500/70"
-                />
+              <div className="flex items-center justify-between text-xs">
+                <span className="text-slate-400">Retrieval Method</span>
+                <span className="font-mono text-brand-300 bg-brand-950/40 px-2.5 py-1 rounded-lg border border-brand-800/40">
+                  Automatic ({selectedMethod})
+                </span>
               </div>
+              <p className="text-[11px] text-slate-400 pt-1 border-t border-surface-border/40">
+                Cloning will automatically run AST parsing and Code Intelligence indexing. File summaries are only generated when explicitly requested.
+              </p>
             </div>
           )}
 

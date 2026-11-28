@@ -440,12 +440,23 @@ class CloneService:
             try:
                 from src.services.ingestion_service import IngestionService
                 ingestion_svc = IngestionService(self.db)
-                await ingestion_svc.ingest_repository(
+                snapshot = await ingestion_svc.ingest_repository(
                     repository_id=repo.id,
                     user_id=job.user_id,
                     branch=job.branch,
                     commit_sha=job.commit_sha
                 )
+                # Stage 4b: Automatically build AI Code Intelligence index (never generates file summaries)
+                try:
+                    from src.services.ai_service import AIServiceBridge
+                    ai_bridge = AIServiceBridge(self.db)
+                    await ai_bridge.get_or_build_repo_index(
+                        repository_id=repo.id,
+                        user_id=job.user_id,
+                        snapshot_id=snapshot.id,
+                    )
+                except Exception as ai_err:
+                    logger.warning("AI code indexing warning for job %s: %s", job.id, ai_err)
             except Exception as ing_err:
                 logger.warning("Code ingestion warning for job %s: %s", job.id, ing_err)
 

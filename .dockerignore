@@ -1,0 +1,9 @@
+.git
+.pytest_cache
+**/__pycache__
+**/*.pyc
+apps/api/.venv
+apps/api/workspaces
+apps/web/node_modules
+apps/web/dist
+HEAD

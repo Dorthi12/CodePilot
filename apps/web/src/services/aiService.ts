@@ -1,69 +1,94 @@
+import axios from 'axios';
 import { api } from './api';
+import { APIResponse } from './authService';
 import {
-  SearchResponse,
-  ExplanationResponse,
-  ProjectSummaryResponse,
-  RepositoryFilesResponse,
-  FileContentResponse,
+  CodeExplainRequest,
+  CodeExplainResponse,
+  CodeSearchRequest,
+  CodeSearchResponse,
+  RepoIndexRequest,
+  RepoIndexResponse,
 } from '../types/ai';
 
-export interface SearchParams {
-  query: string;
-  filters?: {
-    kinds?: string[];
-    languages?: string[];
-    path_prefix?: string;
-  };
-  top_k?: number;
+interface ValidationErrorItem {
+  msg?: string;
+  loc?: Array<string | number>;
 }
 
-export interface ExplainParams {
-  code?: string;
-  file_path?: string;
-  start_line?: number;
-  end_line?: number;
-  symbol_id?: string;
-  question?: string;
-  explanation_style?: 'beginner' | 'technical' | 'deep';
+interface BackendErrorShape {
+  error?: {
+    code?: string;
+    message?: string;
+    details?: {
+      errors?: ValidationErrorItem[];
+    };
+  };
+  detail?: string | { code?: string; message?: string };
+}
+
+export function extractAIErrorMessage(err: unknown, fallback = 'Request failed. Please try again.'): string {
+  if (!axios.isAxiosError(err)) {
+    return err instanceof Error ? err.message : fallback;
+  }
+
+  const status = err.response?.status;
+  const data = err.response?.data as BackendErrorShape | undefined;
+
+  if (status === 401) {
+    return 'Your session has expired or you are not authenticated. Please sign in again.';
+  }
+
+  if (data?.error?.details?.errors && Array.isArray(data.error.details.errors) && data.error.details.errors.length > 0) {
+    const first = data.error.details.errors[0];
+    if (first?.msg) return first.msg;
+  }
+
+  if (data?.error?.message) {
+    return data.error.message;
+  }
+
+  if (typeof data?.detail === 'string') {
+    return data.detail;
+  }
+  if (data?.detail && typeof data.detail === 'object' && data.detail.message) {
+    return data.detail.message;
+  }
+
+  if (status === 404) {
+    return 'Repository or completed analysis snapshot was not found.';
+  }
+  if (status === 422) {
+    return 'Invalid request parameters. Please check your input.';
+  }
+  if (status && status >= 500) {
+    return 'Server error occurred while processing the AI request. Please try again.';
+  }
+
+  return err.message || fallback;
 }
 
 export const aiService = {
-  async searchRepository(repoId: string, params: SearchParams): Promise<SearchResponse> {
-    const response = await api.post<SearchResponse>(`/repositories/${repoId}/ai/search`, {
-      query: params.query,
-      filters: params.filters,
-      top_k: params.top_k || 20,
-    });
-    return response.data;
+  async indexRepository(repositoryId: string, payload: RepoIndexRequest = {}): Promise<RepoIndexResponse> {
+    const response = await api.post<APIResponse<RepoIndexResponse>>(
+      `/repositories/${repositoryId}/index`,
+      payload
+    );
+    return response.data.data;
   },
 
-  async explainCode(repoId: string, params: ExplainParams): Promise<ExplanationResponse> {
-    const response = await api.post<ExplanationResponse>(`/repositories/${repoId}/ai/explain`, {
-      code: params.code,
-      file_path: params.file_path,
-      start_line: params.start_line,
-      end_line: params.end_line,
-      symbol_id: params.symbol_id,
-      question: params.question,
-      explanation_style: params.explanation_style || 'technical',
-    });
-    return response.data;
+  async searchCode(repositoryId: string, payload: CodeSearchRequest): Promise<CodeSearchResponse> {
+    const response = await api.post<APIResponse<CodeSearchResponse>>(
+      `/repositories/${repositoryId}/search`,
+      payload
+    );
+    return response.data.data;
   },
 
-  async getRepositorySummary(repoId: string): Promise<ProjectSummaryResponse> {
-    const response = await api.get<ProjectSummaryResponse>(`/repositories/${repoId}/analysis/summary`);
-    return response.data;
-  },
-
-  async getRepositoryFiles(repoId: string): Promise<RepositoryFilesResponse> {
-    const response = await api.get<RepositoryFilesResponse>(`/repositories/${repoId}/ai/files`);
-    return response.data;
-  },
-
-  async getFileContent(repoId: string, path: string): Promise<FileContentResponse> {
-    const response = await api.get<FileContentResponse>(`/repositories/${repoId}/file-content`, {
-      params: { path },
-    });
-    return response.data;
+  async explainCode(repositoryId: string, payload: CodeExplainRequest): Promise<CodeExplainResponse> {
+    const response = await api.post<APIResponse<CodeExplainResponse>>(
+      `/repositories/${repositoryId}/explain`,
+      payload
+    );
+    return response.data.data;
   },
 };
