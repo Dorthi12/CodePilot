@@ -128,13 +128,31 @@ class SearchResponse(BaseModel):
 
 
 # ---------------------------------------------------------------------------
+# Code Chunk model (§6.1 — chunking entity for semantic retrieval)
+# ---------------------------------------------------------------------------
+
+class CodeChunk(BaseModel):
+    """A semantic or logical chunk of source code extracted from a repository file."""
+    chunk_id: str = Field(description="Deterministic ID for this chunk")
+    file_path: str = Field(description="POSIX repo-relative file path")
+    chunk_type: str = Field(default="CODE", description="Chunk kind: CLASS, FUNCTION, METHOD, MODULE, BLOCK")
+    start_line: int = Field(ge=1, description="1-indexed starting line")
+    end_line: int = Field(ge=1, description="1-indexed ending line")
+    content: str = Field(description="Raw source text of the chunk")
+    symbol_name: Optional[str] = Field(default=None, description="Associated symbol name if bounded to a symbol")
+    token_count: Optional[int] = Field(default=None, description="Approximate token count")
+    content_hash: Optional[str] = Field(default=None, description="SHA-256 hash of chunk content")
+
+
+# ---------------------------------------------------------------------------
 # Index snapshot model — what the indexer produces and the searcher consumes
 # ---------------------------------------------------------------------------
 
 class RepoIndex(BaseModel):
-    """In-memory index for one repository snapshot."""
+    """Authoritative index for one repository snapshot stored in Redis."""
     repo_id: str
     snapshot_id: str
     symbols: list[CodeSymbol] = Field(default_factory=list)
+    chunks: list[CodeChunk] = Field(default_factory=list)
     files: dict[str, str] = Field(default_factory=dict, description="Map of file_path to source text")
     warnings: list[str] = Field(default_factory=list)

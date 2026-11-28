@@ -280,3 +280,7 @@ class AIServiceBridge:
             return ai_explain_code(req, repo_index)
         except ValueError as exc:
             raise AIServiceError(str(exc), code="INVALID_INPUT") from exc
+
+
+# Alias for backward compatibility across endpoints and dependency injectors
+AIService = AIServiceBridge

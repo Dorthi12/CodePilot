@@ -22,14 +22,23 @@ from typing import Dict, List, Optional, Tuple, Any
 import tree_sitter
 from tree_sitter import Language, Parser
 import tree_sitter_python
-import tree_sitter_javascript
-import tree_sitter_typescript
+
+try:
+    import tree_sitter_javascript
+    JS_LANGUAGE = Language(tree_sitter_javascript.language())
+except ImportError:
+    JS_LANGUAGE = None
+
+try:
+    import tree_sitter_typescript
+    TS_LANGUAGE = Language(tree_sitter_typescript.language_typescript())
+    TSX_LANGUAGE = Language(tree_sitter_typescript.language_tsx())
+except ImportError:
+    TS_LANGUAGE = None
+    TSX_LANGUAGE = None
 
 # Initialize Tree-sitter parsers
 PY_LANGUAGE = Language(tree_sitter_python.language())
-JS_LANGUAGE = Language(tree_sitter_javascript.language())
-TS_LANGUAGE = Language(tree_sitter_typescript.language_typescript())
-TSX_LANGUAGE = Language(tree_sitter_typescript.language_tsx())
 
 # Binary file extensions that should not be text-parsed
 BINARY_EXTENSIONS = {
@@ -101,10 +110,13 @@ class ASTParserService:
     def __init__(self):
         self._parsers: Dict[str, Parser] = {
             "python": Parser(PY_LANGUAGE),
-            "javascript": Parser(JS_LANGUAGE),
-            "typescript": Parser(TS_LANGUAGE),
-            "tsx": Parser(TSX_LANGUAGE),
         }
+        if JS_LANGUAGE is not None:
+            self._parsers["javascript"] = Parser(JS_LANGUAGE)
+        if TS_LANGUAGE is not None:
+            self._parsers["typescript"] = Parser(TS_LANGUAGE)
+        if TSX_LANGUAGE is not None:
+            self._parsers["tsx"] = Parser(TSX_LANGUAGE)
 
     def detect_language(self, file_path: str) -> Optional[str]:
         """Detect language from file path or extension."""
